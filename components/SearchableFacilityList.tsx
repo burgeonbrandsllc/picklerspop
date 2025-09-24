@@ -3,19 +3,31 @@
 import { useState } from "react";
 import { supabase } from "@/lib/supabase";
 
+type Facility = {
+  id: string;
+  name: string;
+  city: string;
+  state: string;
+  zip_code?: string;
+  court_count?: number;
+  indoor?: boolean;
+  outdoor?: boolean;
+  lights?: boolean;
+};
+
 export default function SearchableFacilityList() {
-  const [facilities, setFacilities] = useState<any[]>([]);
+  const [facilities, setFacilities] = useState<Facility[]>([]);
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(false);
   const [searched, setSearched] = useState(false);
   const [page, setPage] = useState(0);
-  const pageSize = 20; // load 20 at a time
+  const pageSize = 20;
 
   async function handleSearch(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
     setSearched(true);
-    setPage(0); // reset pagination
+    setPage(0);
 
     const { data, error } = await supabase
       .from("facilities")
@@ -35,7 +47,7 @@ export default function SearchableFacilityList() {
       console.error("Error loading facilities:", error.message);
       setFacilities([]);
     } else {
-      setFacilities(data || []);
+      setFacilities((data as Facility[]) || []);
     }
 
     setLoading(false);
@@ -65,7 +77,7 @@ export default function SearchableFacilityList() {
     if (error) {
       console.error("Error loading more facilities:", error.message);
     } else {
-      setFacilities((prev) => [...prev, ...(data || [])]);
+      setFacilities((prev) => [...prev, ...((data as Facility[]) || [])]);
       setPage(nextPage);
     }
 
@@ -131,7 +143,6 @@ export default function SearchableFacilityList() {
                   </li>
                 ))}
               </ul>
-              {/* Load more */}
               <div className="mt-4">
                 <button
                   onClick={loadMore}
