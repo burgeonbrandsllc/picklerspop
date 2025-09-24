@@ -31,3 +31,27 @@ export default async function FacilityPage({ params }: { params: { id: string } 
     </main>
   );
 }
+const { data: reviews } = await supabase
+  .from("reviews")
+  .select("*")
+  .eq("facility_id", params.id)
+  .order("created_at", { ascending: false });
+
+...
+
+<section className="mt-6">
+  <h2 className="font-semibold text-lg mb-2">Reviews</h2>
+  {reviews && reviews.length > 0 ? (
+    <ul className="space-y-3">
+      {reviews.map((r) => (
+        <li key={r.id} className="border p-3 rounded">
+          <div className="font-medium">⭐ {r.rating}</div>
+          <p className="text-sm">{r.comment ?? "No comment"}</p>
+        </li>
+      ))}
+    </ul>
+  ) : (
+    <p className="text-gray-500">No reviews yet.</p>
+  )}
+</section>
+
