@@ -1,11 +1,12 @@
 import { supabase } from "@/lib/supabase";
+import ClientReviews from "@/components/ClientReviews";
 
 interface FacilityPageProps {
   params: { id: string };
 }
 
 export default async function FacilityPage({ params }: FacilityPageProps) {
-  // Fetch the facility
+  // Fetch facility details server-side
   const { data: facility, error } = await supabase
     .from("facilities")
     .select("*")
@@ -25,13 +26,6 @@ export default async function FacilityPage({ params }: FacilityPageProps) {
     return <div>Facility not found</div>;
   }
 
-  // Fetch reviews
-  const { data: reviews } = await supabase
-    .from("reviews")
-    .select("*")
-    .eq("facility_id", params.id)
-    .order("created_at", { ascending: false });
-
   return (
     <main className="p-6 max-w-2xl mx-auto">
       <h1 className="text-2xl font-bold">{facility.name}</h1>
@@ -50,21 +44,9 @@ export default async function FacilityPage({ params }: FacilityPageProps) {
         <li>{facility.lights ? "Lights available" : "No lights"}</li>
       </ul>
 
-      {/* Reviews section */}
+      {/* Client-side review form + list */}
       <section className="mt-6">
-        <h2 className="font-semibold text-lg mb-2">Reviews</h2>
-        {reviews && reviews.length > 0 ? (
-          <ul className="space-y-3">
-            {reviews.map((r) => (
-              <li key={r.id} className="border p-3 rounded">
-                <div className="font-medium">⭐ {r.rating}</div>
-                <p className="text-sm">{r.comment ?? "No comment"}</p>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p className="text-gray-500">No reviews yet.</p>
-        )}
+        <ClientReviews facilityId={params.id} />
       </section>
     </main>
   );
