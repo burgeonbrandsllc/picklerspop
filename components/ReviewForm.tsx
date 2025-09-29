@@ -78,3 +78,20 @@ export default function ReviewForm({ facilityId, onReviewAdded }: ReviewFormProp
     </form>
   );
 }
+const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  
+  if (!user) {
+    setMessage("❌ You must be logged in to leave a review.");
+    setLoading(false);
+    return;
+  }
+  
+  const { error } = await supabase.from("reviews").insert({
+    facility_id: facilityId,
+    rating,
+    comment: comment.trim() === "" ? null : comment.trim(),
+    user_id: user.id,
+  });
+  
