@@ -1,5 +1,7 @@
 // app/page.tsx
 import SearchableFacilityList from "@/components/SearchableFacilityList";
+import { supabaseServer } from "@/lib/supabaseServer";
+const supabase = supabaseServer();
 
 export default function HomePage() {
   return (

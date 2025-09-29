@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
+import { supabase } from "@/lib/supabaseClient";
 
 type Review = {
   id: string;
