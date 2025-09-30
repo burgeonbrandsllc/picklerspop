@@ -1,4 +1,3 @@
-import { supabase } from "@/lib/supabase";
 import ClientReviews from "@/components/ClientReviews";
 import { supabaseServer } from "@/lib/supabaseServer";
 const supabase = supabaseServer();
