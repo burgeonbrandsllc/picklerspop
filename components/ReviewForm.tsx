@@ -5,25 +5,36 @@ import { supabase } from "@/lib/supabaseClient";
 
 interface ReviewFormProps {
   facilityId: string;
-  onReviewAdded: () => void; // callback to trigger refresh
+  onReviewAdded: () => void; // callback to refresh the list
 }
 
 export default function ReviewForm({ facilityId, onReviewAdded }: ReviewFormProps) {
   const [rating, setRating] = useState<number>(5);
   const [comment, setComment] = useState("");
   const [loading, setLoading] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null); // ✅ <-- this was missing
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
     setMessage(null);
 
+    // ✅ Check if user is logged in
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      setMessage("❌ You must be logged in to leave a review.");
+      setLoading(false);
+      return;
+    }
+
     const { error } = await supabase.from("reviews").insert({
       facility_id: facilityId,
       rating,
       comment: comment.trim() === "" ? null : comment.trim(),
-      user_id: null, // TODO: connect with Supabase Auth later
+      user_id: user.id,
     });
 
     if (error) {
@@ -33,7 +44,7 @@ export default function ReviewForm({ facilityId, onReviewAdded }: ReviewFormProp
       setMessage("✅ Review submitted!");
       setRating(5);
       setComment("");
-      onReviewAdded(); // tell parent to refresh list
+      onReviewAdded(); // trigger refresh
     }
 
     setLoading(false);
@@ -78,20 +89,3 @@ export default function ReviewForm({ facilityId, onReviewAdded }: ReviewFormProp
     </form>
   );
 }
-const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  
-  if (!user) {
-    setMessage("❌ You must be logged in to leave a review.");
-    setLoading(false);
-    return;
-  }
-  
-  const { error } = await supabase.from("reviews").insert({
-    facility_id: facilityId,
-    rating,
-    comment: comment.trim() === "" ? null : comment.trim(),
-    user_id: user.id,
-  });
-  
