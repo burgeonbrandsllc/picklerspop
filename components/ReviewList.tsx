@@ -36,10 +36,13 @@ export default function ReviewList({ facilityId, refreshSignal }: ReviewListProp
 
     setLoading(false);
   }
+  const fetchReviews = useCallback(async () => {
+    // ... fetch from supabase
+  }, []);
 
   useEffect(() => {
     fetchReviews();
-  }, [facilityId, refreshSignal]); // refetch whenever refreshSignal changes
+  },[fetchReviews],[facilityId, refreshSignal]); // refetch whenever refreshSignal changes
 
   if (loading) return <p>Loading reviews...</p>;
 

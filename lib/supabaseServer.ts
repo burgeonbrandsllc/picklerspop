@@ -1,5 +1,5 @@
 // lib/supabaseServer.ts
-import { createServerClient } from "@supabase/ssr";
+import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import { cookies } from "next/headers";
 
 export function supabaseServer() {
@@ -11,18 +11,18 @@ export function supabaseServer() {
         get(name: string) {
           return cookies().get(name)?.value;
         },
-        set(name: string, value: string, options: any) {
+        set(name: string, value: string, options: CookieOptions) {
           try {
             cookies().set({ name, value, ...options });
           } catch {
-            // cookies are readonly in Server Components (safe fallback)
+            // cookies are read-only in Server Components
           }
         },
-        remove(name: string, options: any) {
+        remove(name: string, options: CookieOptions) {
           try {
             cookies().set({ name, value: "", ...options });
           } catch {
-            // cookies are readonly in Server Components (safe fallback)
+            // cookies are read-only in Server Components
           }
         },
       },
