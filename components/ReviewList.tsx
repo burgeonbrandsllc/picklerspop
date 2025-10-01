@@ -1,25 +1,26 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { supabase } from "@/lib/supabaseClient";
 
-type Review = {
+interface Review {
   id: string;
   rating: number;
   comment: string | null;
   created_at: string;
-};
+}
 
 interface ReviewListProps {
   facilityId: string;
-  refreshSignal: number; // used to trigger re-fetch
+  refreshSignal: number; // bump this when new review submitted
 }
 
 export default function ReviewList({ facilityId, refreshSignal }: ReviewListProps) {
   const [reviews, setReviews] = useState<Review[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
 
-  async function fetchReviews() {
+  // ✅ Single definition of fetchReviews, wrapped in useCallback
+  const fetchReviews = useCallback(async () => {
     setLoading(true);
     const { data, error } = await supabase
       .from("reviews")
@@ -29,33 +30,34 @@ export default function ReviewList({ facilityId, refreshSignal }: ReviewListProp
 
     if (error) {
       console.error("Error fetching reviews:", error.message);
-      setReviews([]);
     } else {
-      setReviews((data as Review[]) || []);
+      setReviews(data || []);
     }
-
     setLoading(false);
-  }
-  const fetchReviews = useCallback(async () => {
-    // ... fetch from supabase
-  }, []);
+  }, [facilityId]);
 
+  // ✅ Trigger on mount and when refreshSignal changes
   useEffect(() => {
     fetchReviews();
-  },[fetchReviews],[facilityId, refreshSignal]); // refetch whenever refreshSignal changes
+  }, [fetchReviews, refreshSignal]);
 
   if (loading) return <p>Loading reviews...</p>;
 
-  return reviews.length > 0 ? (
-    <ul className="space-y-3">
-      {reviews.map((r) => (
-        <li key={r.id} className="border p-3 rounded">
-          <div className="font-medium">⭐ {r.rating}</div>
-          <p className="text-sm">{r.comment ?? "No comment"}</p>
-        </li>
-      ))}
-    </ul>
-  ) : (
-    <p className="text-gray-500">No reviews yet.</p>
+  return (
+    <section className="mt-6">
+      <h2 className="font-semibold text-lg mb-2">Reviews</h2>
+      {reviews.length > 0 ? (
+        <ul className="space-y-3">
+          {reviews.map((r) => (
+            <li key={r.id} className="border p-3 rounded">
+              <div className="font-medium">⭐ {r.rating}</div>
+              <p className="text-sm">{r.comment ?? "No comment"}</p>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="text-gray-500">No reviews yet.</p>
+      )}
+    </section>
   );
 }
