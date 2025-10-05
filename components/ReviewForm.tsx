@@ -1,60 +1,82 @@
 "use client";
 
 import { useState } from "react";
-import { supabase } from "@/lib/supabaseClient";
-import { useSupabaseAuth } from "@/components/SupabaseProvider";
+import { createBrowserClient } from "@supabase/ssr";
+
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+
+// Create a Supabase client for client-side use
+const supabase = createBrowserClient(supabaseUrl, supabaseAnonKey);
 
 interface ReviewFormProps {
   facilityId: string;
-  onReviewAdded: () => void; // callback to refresh the review list
+  onReviewAdded?: () => void;
 }
 
 export default function ReviewForm({ facilityId, onReviewAdded }: ReviewFormProps) {
-  const { user } = useSupabaseAuth(); // ✅ comes from context provider
   const [rating, setRating] = useState<number>(5);
-  const [comment, setComment] = useState("");
+  const [comment, setComment] = useState<string>("");
   const [loading, setLoading] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
+  const [message, setMessage] = useState<string>("");
 
-  async function handleSubmit(e: React.FormEvent) {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-
-    if (!user) {
-      setMessage("❌ You must be logged in to leave a review.");
-      return;
-    }
-
     setLoading(true);
-    setMessage(null);
+    setMessage("");
 
-    const { error } = await supabase.from("reviews").insert({
-      facility_id: facilityId,
-      rating,
-      comment: comment.trim() === "" ? null : comment.trim(),
-      user_id: user.id, // ✅ ties review to logged-in user
-    });
+    try {
+      // ✅ Step 1: Check if the user is logged in via Shopify
+      const res = await fetch("/api/shopify-session");
+      const session = await res.json();
 
-    if (error) {
-      console.error("Error adding review:", error.message);
-      setMessage("❌ Error adding review. Please try again.");
-    } else {
-      setMessage("✅ Review submitted!");
-      setRating(5);
-      setComment("");
-      onReviewAdded(); // trigger review list refresh
+      if (!session.loggedIn) {
+        setMessage("❌ You must be logged in to leave a review.");
+        setLoading(false);
+        return;
+      }
+
+      const customer = session.customer;
+
+      // ✅ Step 2: Insert the review into Supabase
+      const { error } = await supabase.from("reviews").insert({
+        facility_id: facilityId,
+        rating,
+        comment,
+        customer_email: customer.email,
+        customer_name: `${customer.firstName ?? ""} ${customer.lastName ?? ""}`.trim(),
+      });
+
+      if (error) {
+        console.error("Error adding review:", error.message);
+        setMessage("⚠️ Error adding review. Please try again.");
+      } else {
+        setMessage("✅ Review submitted!");
+        setComment("");
+        setRating(5);
+
+        // ✅ Refresh the review list
+        if (onReviewAdded) onReviewAdded();
+      }
+    } catch (err) {
+      console.error("Unexpected error:", err);
+      setMessage("⚠️ Something went wrong.");
+    } finally {
+      setLoading(false);
     }
-
-    setLoading(false);
-  }
+  };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-3 mt-4">
-      <div>
-        <label className="block text-sm font-medium">Rating</label>
+    <form onSubmit={handleSubmit} className="border p-4 rounded mt-6 space-y-3">
+      <h3 className="font-semibold text-lg">Leave a Review</h3>
+
+      <label className="block">
+        <span className="text-sm font-medium">Rating</span>
         <select
+          className="mt-1 border rounded p-2 w-full"
           value={rating}
           onChange={(e) => setRating(Number(e.target.value))}
-          className="border rounded px-2 py-1"
+          disabled={loading}
         >
           {[5, 4, 3, 2, 1].map((r) => (
             <option key={r} value={r}>
@@ -62,22 +84,24 @@ export default function ReviewForm({ facilityId, onReviewAdded }: ReviewFormProp
             </option>
           ))}
         </select>
-      </div>
+      </label>
 
-      <div>
-        <label className="block text-sm font-medium">Comment (optional)</label>
+      <label className="block">
+        <span className="text-sm font-medium">Comment</span>
         <textarea
+          className="mt-1 border rounded p-2 w-full"
+          rows={3}
           value={comment}
           onChange={(e) => setComment(e.target.value)}
-          rows={3}
-          className="w-full border rounded px-2 py-1"
+          disabled={loading}
+          placeholder="Share your experience..."
         />
-      </div>
+      </label>
 
       <button
         type="submit"
         disabled={loading}
-        className="bg-blue-600 text-white px-4 py-2 rounded"
+        className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition disabled:opacity-50"
       >
         {loading ? "Submitting..." : "Submit Review"}
       </button>
