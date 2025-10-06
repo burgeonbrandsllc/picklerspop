@@ -1,33 +1,25 @@
 "use client";
-
 import { useEffect } from "react";
 
-/**
- * ShopifyBridge attempts to detect a logged-in Shopify customer
- * on your Shopify storefront pages and syncs basic info (email, id)
- * into localStorage for the Next.js app to use.
- */
 export default function ShopifyBridge() {
   useEffect(() => {
-    try {
-      const shopifyCustomer =
-        (window as any)?.Shopify?.customer ||
-        (window as any)?.ShopifyAnalytics?.meta?.page?.customer ||
-        null;
+    // Safely handle message events from Shopify
+    const handleShopifyMessage = (event: MessageEvent<unknown>) => {
+      if (
+        typeof event.data === "object" &&
+        event.data !== null &&
+        "type" in event.data
+      ) {
+        const msg = event.data as { type: string; payload?: unknown };
 
-      if (shopifyCustomer) {
-        console.log("✅ Shopify customer detected:", shopifyCustomer);
-        localStorage.setItem(
-          "shopifyCustomer",
-          JSON.stringify(shopifyCustomer)
-        );
-      } else {
-        console.log("ℹ️ No active Shopify session found.");
-        localStorage.removeItem("shopifyCustomer");
+        if (msg.type === "shopify:customer_session") {
+          console.log("Received customer session payload:", msg.payload);
+        }
       }
-    } catch (err) {
-      console.error("⚠️ ShopifyBridge error:", err);
-    }
+    };
+
+    window.addEventListener("message", handleShopifyMessage);
+    return () => window.removeEventListener("message", handleShopifyMessage);
   }, []);
 
   return null;

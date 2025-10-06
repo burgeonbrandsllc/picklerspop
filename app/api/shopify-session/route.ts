@@ -1,40 +1,67 @@
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
 
 export async function GET() {
   try {
-    const shopDomain = process.env.SHOPIFY_SHOP_DOMAIN!;
-    const cookieStore = await cookies();
-    const token = cookieStore.get("customer_access_token")?.value;
+    const res = await fetch(
+      `https://${process.env.SHOPIFY_SHOP}/api/2025-01/graphql.json`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Shopify-Storefront-Access-Token":
+            process.env.SHOPIFY_STOREFRONT_TOKEN || "",
+        },
+        body: JSON.stringify({
+          query: `
+            {
+              customer {
+                id
+                email
+                firstName
+                lastName
+              }
+            }
+          `,
+        }),
+      }
+    );
 
-    if (!token) {
-      return NextResponse.json({ authenticated: false, reason: "No customer token" });
+    if (!res.ok) {
+      return NextResponse.json(
+        { authenticated: false, reason: "Shopify returned " + res.status },
+        { status: res.status }
+      );
     }
 
-    const apiDiscovery = await fetch(`https://${shopDomain}/.well-known/customer-account-api`);
-    const apiConfig = await apiDiscovery.json();
+    const data: {
+      data?: {
+        customer?: {
+          id: string;
+          email: string;
+          firstName?: string;
+          lastName?: string;
+        };
+      };
+    } = await res.json();
 
-    const response = await fetch(apiConfig.graphql_api, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: token,
-      },
-      body: JSON.stringify({
-        query: `query { customer { id email firstName lastName } }`,
-      }),
-    });
-
-    const data = await response.json();
     const customer = data?.data?.customer;
-
-    if (customer) {
-      return NextResponse.json({ authenticated: true, customer });
-    } else {
-      return NextResponse.json({ authenticated: false, reason: "Invalid token" });
+    if (!customer) {
+      return NextResponse.json(
+        { authenticated: false, reason: "No active Shopify session" },
+        { status: 401 }
+      );
     }
-  } catch (error: any) {
-    console.error("Shopify session check failed", error);
-    return NextResponse.json({ authenticated: false, reason: "Error", error: error.message });
+
+    return NextResponse.json({
+      authenticated: true,
+      customer,
+    });
+  } catch (error: unknown) {
+    const message =
+      error instanceof Error ? error.message : "Unknown internal error";
+    return NextResponse.json(
+      { authenticated: false, reason: "Internal error", error: message },
+      { status: 500 }
+    );
   }
 }
