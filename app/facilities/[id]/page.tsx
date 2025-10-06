@@ -8,7 +8,8 @@ interface FacilityPageProps {
 
 export default async function FacilityPage({ params }: FacilityPageProps) {
   // Fetch facility details server-side
-  const supabase = await supabaseServer();
+   const supabase = await supabaseServer(); // ✅ await added
+
   const { data: facility, error } = await supabase
     .from("facilities")
     .select("*")
