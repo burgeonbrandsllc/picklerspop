@@ -1,24 +1,40 @@
 import { NextResponse } from "next/server";
-import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 
 export async function GET() {
-  const cookieStore = await cookies();
+  try {
+    const shopDomain = process.env.SHOPIFY_SHOP_DOMAIN!;
+    const cookieStore = await cookies();
+    const token = cookieStore.get("customer_access_token")?.value;
 
-  // 1️⃣ Retrieve Shopify customer_access_token (set by your theme/app)
-  const customerAccessToken = (await cookieStore).get("customer_access_token")?.value;
+    if (!token) {
+      return NextResponse.json({ authenticated: false, reason: "No customer token" });
+    }
 
-  if (!customerAccessToken) {
-    return NextResponse.json({ loggedIn: false });
+    const apiDiscovery = await fetch(`https://${shopDomain}/.well-known/customer-account-api`);
+    const apiConfig = await apiDiscovery.json();
+
+    const response = await fetch(apiConfig.graphql_api, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: token,
+      },
+      body: JSON.stringify({
+        query: `query { customer { id email firstName lastName } }`,
+      }),
+    });
+
+    const data = await response.json();
+    const customer = data?.data?.customer;
+
+    if (customer) {
+      return NextResponse.json({ authenticated: true, customer });
+    } else {
+      return NextResponse.json({ authenticated: false, reason: "Invalid token" });
+    }
+  } catch (error: any) {
+    console.error("Shopify session check failed", error);
+    return NextResponse.json({ authenticated: false, reason: "Error", error: error.message });
   }
-
-  // 2️⃣ Create Supabase session using Shopify identity (pseudo-auth)
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    { cookies: cookieStore }
-  );
-
-  // Optionally verify Shopify session via Storefront API before trusting
-  return NextResponse.json({ loggedIn: true, shopifyToken: customerAccessToken });
 }

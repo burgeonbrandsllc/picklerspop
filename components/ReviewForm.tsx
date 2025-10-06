@@ -1,13 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { createBrowserClient } from "@supabase/ssr";
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-
-// Create a Supabase client for client-side use
-const supabase = createBrowserClient(supabaseUrl, supabaseAnonKey);
+import { supabase } from "@/lib/supabaseClient";
 
 interface ReviewFormProps {
   facilityId: string;
@@ -26,25 +20,56 @@ export default function ReviewForm({ facilityId, onReviewAdded }: ReviewFormProp
     setMessage("");
 
     try {
-      // ✅ Step 1: Check if the user is logged in via Shopify
-      const res = await fetch("/api/shopify-session");
-      const session = await res.json();
+      // Step 1️⃣: Verify Shopify customer session
+      const shopifyRes = await fetch("/api/shopify-session", { cache: "no-store" });
+      const shopifySession = await shopifyRes.json();
 
-      if (!session.loggedIn) {
-        setMessage("❌ You must be logged in to leave a review.");
+      if (!shopifySession?.authenticated) {
+        setMessage("⚠️ Please sign in to your PicklersPop account to leave a review.");
         setLoading(false);
         return;
       }
 
-      const customer = session.customer;
+      const shopifyCustomer = shopifySession.customer;
+      if (!shopifyCustomer?.id || !shopifyCustomer?.email) {
+        setMessage("⚠️ Invalid Shopify customer session data.");
+        setLoading(false);
+        return;
+      }
 
-      // ✅ Step 2: Insert the review into Supabase
+      // Step 2️⃣: Sync Shopify session with Supabase
+      const supabaseRes = await fetch("/api/supabase-auth", {
+        method: "POST",
+        cache: "no-store",
+      });
+      const supabaseSession = await supabaseRes.json();
+
+      if (!supabaseSession?.authenticated) {
+        setMessage("⚠️ Unable to verify Supabase session. Please refresh and try again.");
+        setLoading(false);
+        return;
+      }
+
+      // Step 3️⃣: Set Supabase auth session locally
+      const { error: sessionError } = await supabase.auth.setSession({
+        access_token: supabaseSession.session?.access_token,
+        refresh_token: supabaseSession.session?.refresh_token,
+      });
+
+      if (sessionError) {
+        console.error("Error setting Supabase session:", sessionError.message);
+        setMessage("⚠️ Unable to create a secure session.");
+        setLoading(false);
+        return;
+      }
+
+      // Step 4️⃣: Submit review
       const { error } = await supabase.from("reviews").insert({
         facility_id: facilityId,
         rating,
         comment,
-        customer_email: customer.email,
-        customer_name: `${customer.firstName ?? ""} ${customer.lastName ?? ""}`.trim(),
+        user_id: supabaseSession.user?.id,
+        customer_email: shopifyCustomer.email,
       });
 
       if (error) {
@@ -55,12 +80,11 @@ export default function ReviewForm({ facilityId, onReviewAdded }: ReviewFormProp
         setComment("");
         setRating(5);
 
-        // ✅ Refresh the review list
         if (onReviewAdded) onReviewAdded();
       }
     } catch (err) {
       console.error("Unexpected error:", err);
-      setMessage("⚠️ Something went wrong.");
+      setMessage("⚠️ Something went wrong while submitting your review.");
     } finally {
       setLoading(false);
     }
