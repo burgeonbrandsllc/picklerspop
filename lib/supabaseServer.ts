@@ -1,8 +1,9 @@
 import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import { cookies } from "next/headers";
 
-export const supabaseServer = async () => {
-  const cookieStore = await cookies(); // ✅ await the Promise
+// ✅ Define as a function that returns a new client per request.
+export function supabaseServer() {
+  const cookieStore = cookies(); // <-- safe here because called within a request
 
   return createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -29,4 +30,4 @@ export const supabaseServer = async () => {
       },
     }
   );
-};
+}

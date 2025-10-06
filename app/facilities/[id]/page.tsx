@@ -1,6 +1,6 @@
 import ClientReviews from "@/components/ClientReviews";
 import { supabaseServer } from "@/lib/supabaseServer";
-const supabase = await supabaseServer();
+
 
 interface FacilityPageProps {
   params: { id: string };
@@ -8,6 +8,7 @@ interface FacilityPageProps {
 
 export default async function FacilityPage({ params }: FacilityPageProps) {
   // Fetch facility details server-side
+  const supabase = await supabaseServer();
   const { data: facility, error } = await supabase
     .from("facilities")
     .select("*")
