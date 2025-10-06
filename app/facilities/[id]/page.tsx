@@ -1,6 +1,6 @@
 import ClientReviews from "@/components/ClientReviews";
 import { supabaseServer } from "@/lib/supabaseServer";
-const supabase = supabaseServer();
+const supabase = await supabaseServer();
 
 interface FacilityPageProps {
   params: { id: string };

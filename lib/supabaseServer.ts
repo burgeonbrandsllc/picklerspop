@@ -1,9 +1,8 @@
-// lib/supabaseServer.ts
-import { createServerClient } from "@supabase/ssr";
+import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import { cookies } from "next/headers";
 
-export function supabaseServer() {
-  const cookieStore = cookies();
+export const supabaseServer = async () => {
+  const cookieStore = await cookies(); // ✅ await the Promise
 
   return createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -13,9 +12,21 @@ export function supabaseServer() {
         get(name: string) {
           return cookieStore.get(name)?.value;
         },
-        set() {},
-        remove() {},
+        set(name: string, value: string, options: CookieOptions) {
+          try {
+            cookieStore.set({ name, value, ...options });
+          } catch (error) {
+            console.warn("Warning: Unable to set cookie on server:", error);
+          }
+        },
+        remove(name: string, options: CookieOptions) {
+          try {
+            cookieStore.delete({ name, ...options });
+          } catch (error) {
+            console.warn("Warning: Unable to remove cookie on server:", error);
+          }
+        },
       },
     }
   );
-}
+};
