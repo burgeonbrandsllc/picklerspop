@@ -53,10 +53,17 @@ export async function GET() {
       authenticated: true,
       customer: data.data.customer,
     });
-  } catch (err: any) {
+    } catch (err) {
+    const errorMessage =
+      err instanceof Error ? err.message : "Unknown error occurred";
     return NextResponse.json(
-      { authenticated: false, reason: "Internal error", error: err.message },
+      {
+        authenticated: false,
+        reason: "Internal error",
+        error: errorMessage,
+      },
       { status: 500 }
     );
   }
+
 }
