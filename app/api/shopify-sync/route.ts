@@ -2,54 +2,62 @@ import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { createClient } from "@supabase/supabase-js";
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
-
 export const runtime = "nodejs";
 
 export async function GET() {
   try {
+    // 🔐 Retrieve access token from cookies
     const cookieStore = await cookies();
     const token = cookieStore.get("customer_access_token")?.value;
 
     if (!token) {
       return NextResponse.json(
-        { ok: false, error: "No access token in cookies" },
+        { ok: false, error: "No customer_access_token cookie found." },
         { status: 401 }
       );
     }
 
     const shopDomain = process.env.SHOPIFY_SHOP_DOMAIN!;
-    const discovery = await fetch(
-      `https://${shopDomain}/.well-known/customer-account-api`
-    );
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+    const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+    const supabase = createClient(supabaseUrl, supabaseKey);
 
+    // 🧭 Discover Customer Account API endpoints
+    const discovery = await fetch(`https://${shopDomain}/.well-known/customer-account-api`);
     if (!discovery.ok) {
+      const text = await discovery.text();
       return NextResponse.json(
-        { ok: false, error: "Customer API discovery failed" },
+        { ok: false, error: `Discovery failed: ${text}` },
         { status: 500 }
       );
     }
 
     const apiConfig = await discovery.json();
 
-// Force the correct account subdomain if discovery returns the storefront
-let graphqlEndpoint = apiConfig.graphql_api as string;
-if (graphqlEndpoint.includes("picklerspop.com/customer/api")) {
-  graphqlEndpoint = graphqlEndpoint.replace(
-    "https://picklerspop.com",
-    "https://account.picklerspop.com"
-  );
-}
+    // ✅ Force correct account subdomain if discovery is wrong
+    let graphqlEndpoint = apiConfig.graphql_api as string;
+    if (graphqlEndpoint.includes("picklerspop.com/customer/api")) {
+      graphqlEndpoint = graphqlEndpoint.replace(
+        "https://picklerspop.com",
+        "https://account.picklerspop.com"
+      );
+    }
 
-console.log("✅ Using Customer GraphQL endpoint:", graphqlEndpoint);
+    console.log("✅ Using Customer GraphQL endpoint:", graphqlEndpoint);
 
-    // ✅ Query Shopify Customer Account API
+    // 🧼 Clean token & enforce Bearer prefix
+    const cleanToken = token.trim().replace(/^"+|"+$/g, "");
+    const authHeader = cleanToken.startsWith("shcat_")
+      ? `Bearer ${cleanToken}`
+      : `Bearer shcat_${cleanToken.replace(/^shcat_/, "")}`;
+
+    console.log("🪪 Using Authorization header:", authHeader.slice(0, 40) + "...");
+
+    // 🧠 Query Shopify Customer Account API for profile data
     const query = `
-      query {
+      query GetCustomer {
         customer {
+          id
           firstName
           lastName
           emailAddress {
@@ -63,40 +71,36 @@ console.log("✅ Using Customer GraphQL endpoint:", graphqlEndpoint);
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        // 👇 Must be "Bearer <token>" and token must start with "shcat_"
-        Authorization: `Bearer ${token}`,
+        Authorization: authHeader,
       },
       body: JSON.stringify({ query }),
     });
 
     const raw = await graphqlRes.text();
-    let data;
-    try {
-      data = JSON.parse(raw);
-    } catch {
-      return NextResponse.json({ ok: false, raw }, { status: 502 });
+
+    if (!graphqlRes.ok) {
+      return NextResponse.json({ ok: false, raw }, { status: 403 });
     }
 
-    if (!graphqlRes.ok || data.errors) {
-      console.error("Shopify GraphQL error:", data);
-      return NextResponse.json({ ok: false, raw }, { status: 400 });
-    }
+    const json = JSON.parse(raw);
+    const customer = json?.data?.customer ?? null;
 
-    const customer = data.data?.customer;
     if (!customer) {
-      return NextResponse.json(
-        { ok: false, error: "No customer in response" },
-        { status: 404 }
-      );
+      return NextResponse.json({ ok: false, raw }, { status: 404 });
     }
 
-    // ✅ Upsert into Supabase
-    const { error } = await supabase.from("customers").upsert({
-      email: customer.emailAddress?.emailAddress,
-      first_name: customer.firstName,
-      last_name: customer.lastName,
-      last_synced_at: new Date().toISOString(),
-    });
+    // 🧾 Upsert into Supabase
+    const { data, error } = await supabase
+      .from("customers")
+      .upsert({
+        shopify_id: customer.id,
+        first_name: customer.firstName ?? null,
+        last_name: customer.lastName ?? null,
+        email: customer.emailAddress?.emailAddress ?? null,
+        updated_at: new Date().toISOString(),
+      })
+      .select()
+      .single();
 
     if (error) {
       console.error("Supabase upsert error:", error);
@@ -106,9 +110,9 @@ console.log("✅ Using Customer GraphQL endpoint:", graphqlEndpoint);
       );
     }
 
-    return NextResponse.json({ ok: true, customer });
+    return NextResponse.json({ ok: true, customer: data });
   } catch (err) {
-    console.error("shopify-sync exception:", err);
+    console.error("Unexpected /shopify-sync error:", err);
     return NextResponse.json(
       { ok: false, error: String(err) },
       { status: 500 }
