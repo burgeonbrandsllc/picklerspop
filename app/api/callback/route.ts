@@ -15,7 +15,6 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "Missing code" }, { status: 400 });
     }
 
-    // ✅ FIX: Await cookies() in Next.js 15+
     const cookieStore = await cookies();
     const verifier = cookieStore.get("pkce_verifier")?.value;
     const storedState = cookieStore.get("oauth_state")?.value;
@@ -36,9 +35,8 @@ export async function GET(request: Request) {
       `https://${shopDomain}/.well-known/openid-configuration`
     );
     const config = await discovery.json();
-    const tokenEndpoint = config.token_endpoint;
 
-    // Exchange code → token
+    const tokenEndpoint = config.token_endpoint;
     const body = new URLSearchParams();
     body.append("grant_type", "authorization_code");
     body.append("client_id", clientId);
@@ -69,27 +67,30 @@ export async function GET(request: Request) {
       );
     }
 
-    // ✅ FIX: Await cookies() for setting values too
-    cookieStore.set("customer_access_token", accessToken, {
-      httpOnly: true,
-      secure: true,
-      sameSite: "none",
-      path: "/",
-      domain: ".picklerspop.com", // allows cross-subdomain
-    });
+    // ✅ Construct response with cookies attached
+    const response = NextResponse.redirect(new URL("/", request.url));
 
-    cookieStore.set("id_token", idToken ?? "", {
+    response.cookies.set("customer_access_token", accessToken, {
       httpOnly: true,
       secure: true,
       sameSite: "none",
       path: "/",
       domain: ".picklerspop.com",
+      maxAge: 60 * 60 * 24 * 7, // 7 days
+    });
+
+    response.cookies.set("id_token", idToken ?? "", {
+      httpOnly: true,
+      secure: true,
+      sameSite: "none",
+      path: "/",
+      domain: ".picklerspop.com",
+      maxAge: 60 * 60 * 24 * 7,
     });
 
     console.log("✅ Customer access token stored successfully");
 
-    // redirect back to home (or a confirmation page)
-    return NextResponse.redirect(new URL("/", request.url));
+    return response;
   } catch (err) {
     console.error("CALLBACK ERROR:", err);
     return NextResponse.json(
