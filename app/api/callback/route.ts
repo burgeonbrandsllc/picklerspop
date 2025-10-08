@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 
+export const runtime = "nodejs"; // 👈 Force full Node.js runtime
+
 export async function GET(request: Request) {
   try {
     const url = new URL(request.url);
@@ -9,6 +11,7 @@ export async function GET(request: Request) {
     const error = url.searchParams.get("error");
 
     if (error) {
+      console.error("Shopify OAuth error:", error);
       return NextResponse.json({ error }, { status: 400 });
     }
     if (!code) {
@@ -30,13 +33,13 @@ export async function GET(request: Request) {
     const clientId = process.env.SHOPIFY_CLIENT_ID!;
     const redirectUri = process.env.SHOPIFY_REDIRECT_URI!;
 
-    // Discover token endpoint
+    // Discover the token endpoint
     const discovery = await fetch(
       `https://${shopDomain}/.well-known/openid-configuration`
     );
     const config = await discovery.json();
-
     const tokenEndpoint = config.token_endpoint;
+
     const body = new URLSearchParams();
     body.append("grant_type", "authorization_code");
     body.append("client_id", clientId);
@@ -52,50 +55,36 @@ export async function GET(request: Request) {
 
     if (!tokenRes.ok) {
       const text = await tokenRes.text();
-      console.error("TOKEN ERROR:", text);
+      console.error("Token error:", text);
       return NextResponse.json({ error: text }, { status: 401 });
     }
 
     const tokenData = await tokenRes.json();
-    const accessToken = tokenData.access_token;
-    const idToken = tokenData.id_token;
+    const { access_token, id_token } = tokenData;
 
-    if (!accessToken) {
-      return NextResponse.json(
-        { error: "No access token returned" },
-        { status: 401 }
+    if (!access_token) {
+      return NextResponse.json({ error: "No access token" }, { status: 401 });
+    }
+
+    // ✅ Construct redirect manually to preserve cookies
+    const redirect = NextResponse.redirect(new URL("/", request.url));
+
+    // Add secure, cross-domain cookies
+    redirect.headers.append(
+      "Set-Cookie",
+      `customer_access_token=${access_token}; Path=/; HttpOnly; Secure; SameSite=None; Domain=.picklerspop.com; Max-Age=604800`
+    );
+    if (id_token) {
+      redirect.headers.append(
+        "Set-Cookie",
+        `id_token=${id_token}; Path=/; HttpOnly; Secure; SameSite=None; Domain=.picklerspop.com; Max-Age=604800`
       );
     }
 
-    // ✅ Construct response with cookies attached
-    const response = NextResponse.redirect(new URL("/", request.url));
-
-    response.cookies.set("customer_access_token", accessToken, {
-      httpOnly: true,
-      secure: true,
-      sameSite: "none",
-      path: "/",
-      domain: ".picklerspop.com",
-      maxAge: 60 * 60 * 24 * 7, // 7 days
-    });
-
-    response.cookies.set("id_token", idToken ?? "", {
-      httpOnly: true,
-      secure: true,
-      sameSite: "none",
-      path: "/",
-      domain: ".picklerspop.com",
-      maxAge: 60 * 60 * 24 * 7,
-    });
-
-    console.log("✅ Customer access token stored successfully");
-
-    return response;
+    console.log("✅ Tokens set and redirecting home.");
+    return redirect;
   } catch (err) {
-    console.error("CALLBACK ERROR:", err);
-    return NextResponse.json(
-      { error: String(err) },
-      { status: 500 }
-    );
+    console.error("Callback error:", err);
+    return NextResponse.json({ error: String(err) }, { status: 500 });
   }
 }
