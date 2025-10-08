@@ -38,6 +38,9 @@ export async function GET() {
       },
       body: JSON.stringify({ query }),
     });
+const text = await res.text();
+console.log("Shopify raw response:", text.slice(0, 300));
+return NextResponse.json({ ok: false, raw: text }, { status: 400 });
 
     const json = await res.json();
     const customer = json.data?.customer;
