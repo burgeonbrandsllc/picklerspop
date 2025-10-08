@@ -6,7 +6,6 @@ export const runtime = "nodejs";
 
 export async function GET() {
   try {
-    // --- Get cookie token ---
     const cookieStore = await cookies();
     const token = cookieStore.get("customer_access_token")?.value;
 
@@ -17,14 +16,15 @@ export async function GET() {
       );
     }
 
-    // --- Env vars ---
-    const shopDomain = process.env.SHOPIFY_SHOP_DOMAIN!;
+    const shopDomain = process.env.SHOPIFY_SHOP_DOMAIN!; // picklerspop.com
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
     const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
     const supabase: SupabaseClient = createClient(supabaseUrl, supabaseKey);
 
-    // --- Discover Customer Account API endpoints ---
-    const discoveryRes = await fetch(`https://${shopDomain}/.well-known/customer-account-api`);
+    // Discover GraphQL endpoint
+    const discoveryUrl = `https://${shopDomain}/.well-known/customer-account-api`;
+    const discoveryRes = await fetch(discoveryUrl);
+
     if (!discoveryRes.ok) {
       const text = await discoveryRes.text();
       return NextResponse.json(
@@ -35,7 +35,7 @@ export async function GET() {
 
     const apiConfig: { graphql_api: string } = await discoveryRes.json();
 
-    // --- Prefer correct account subdomain ---
+    // Force the correct domain (account.)
     let graphqlEndpoint = apiConfig.graphql_api;
     if (graphqlEndpoint.includes("picklerspop.com/customer/api")) {
       graphqlEndpoint = graphqlEndpoint.replace(
@@ -46,7 +46,7 @@ export async function GET() {
 
     console.log("✅ GraphQL endpoint:", graphqlEndpoint);
 
-    // --- Clean token ---
+    // Clean token and enforce shcat_ prefix
     const cleanToken = token.trim().replace(/^"+|"+$/g, "");
     const finalToken = cleanToken.startsWith("shcat_")
       ? cleanToken
@@ -55,7 +55,6 @@ export async function GET() {
 
     console.log("🔑 Shopify token prefix:", finalToken.slice(0, 20));
 
-    // --- Build query ---
     const query = `
       query GetCustomer {
         customer {
@@ -69,27 +68,33 @@ export async function GET() {
       }
     `;
 
-    // --- Perform GraphQL call ---
+    // Detect runtime origin (works for vercel.app and picklerspop.com)
+    const expectedOrigin = process.env.VERCEL_URL
+      ? `https://${process.env.VERCEL_URL}`
+      : "https://account.picklerspop.com";
+
+    // Always send Shopify-verified origin
+    const verifiedOrigin = "https://account.picklerspop.com";
+
     const graphqlRes = await fetch(graphqlEndpoint, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         Authorization: authHeader,
         "User-Agent": "picklerspop (https://picklerspop.com)",
-        Origin: "https://picklerspop.com",
+        Origin: verifiedOrigin,
+        Referer: verifiedOrigin,
       },
       body: JSON.stringify({ query }),
     });
 
     const raw = await graphqlRes.text();
-
     console.log("🧾 Shopify raw response:", raw.slice(0, 300));
 
     if (!graphqlRes.ok) {
       return NextResponse.json({ ok: false, raw }, { status: graphqlRes.status });
     }
 
-    // --- Parse response safely ---
     let json: Record<string, unknown>;
     try {
       json = JSON.parse(raw) as Record<string, unknown>;
@@ -100,13 +105,11 @@ export async function GET() {
       );
     }
 
-    // Narrow type
     const customer = (json?.data as { customer?: Record<string, unknown> })?.customer;
     if (!customer) {
       return NextResponse.json({ ok: false, raw }, { status: 404 });
     }
 
-    // --- Upsert into Supabase ---
     const { data, error } = await supabase
       .from("customers")
       .upsert({
