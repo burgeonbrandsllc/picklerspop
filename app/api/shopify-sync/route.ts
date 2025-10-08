@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { createClient } from "@supabase/supabase-js";
+import { createClient, SupabaseClient } from "@supabase/supabase-js";
 
 export const runtime = "nodejs";
 
@@ -21,7 +21,7 @@ export async function GET() {
     const shopDomain = process.env.SHOPIFY_SHOP_DOMAIN!;
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
     const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-    const supabase = createClient(supabaseUrl, supabaseKey);
+    const supabase: SupabaseClient = createClient(supabaseUrl, supabaseKey);
 
     // --- Discover Customer Account API endpoints ---
     const discoveryRes = await fetch(`https://${shopDomain}/.well-known/customer-account-api`);
@@ -33,10 +33,10 @@ export async function GET() {
       );
     }
 
-    const apiConfig = await discoveryRes.json();
+    const apiConfig: { graphql_api: string } = await discoveryRes.json();
 
     // --- Prefer correct account subdomain ---
-    let graphqlEndpoint = apiConfig.graphql_api as string;
+    let graphqlEndpoint = apiConfig.graphql_api;
     if (graphqlEndpoint.includes("picklerspop.com/customer/api")) {
       graphqlEndpoint = graphqlEndpoint.replace(
         "https://picklerspop.com",
@@ -83,7 +83,6 @@ export async function GET() {
 
     const raw = await graphqlRes.text();
 
-    // --- Debug output ---
     console.log("🧾 Shopify raw response:", raw.slice(0, 300));
 
     if (!graphqlRes.ok) {
@@ -91,14 +90,18 @@ export async function GET() {
     }
 
     // --- Parse response safely ---
-    let json: any;
+    let json: Record<string, unknown>;
     try {
-      json = JSON.parse(raw);
-    } catch (err) {
-      return NextResponse.json({ ok: false, error: "Invalid JSON from Shopify", raw }, { status: 500 });
+      json = JSON.parse(raw) as Record<string, unknown>;
+    } catch {
+      return NextResponse.json(
+        { ok: false, error: "Invalid JSON from Shopify", raw },
+        { status: 500 }
+      );
     }
 
-    const customer = json?.data?.customer ?? null;
+    // Narrow type
+    const customer = (json?.data as { customer?: Record<string, unknown> })?.customer;
     if (!customer) {
       return NextResponse.json({ ok: false, raw }, { status: 404 });
     }
@@ -107,10 +110,12 @@ export async function GET() {
     const { data, error } = await supabase
       .from("customers")
       .upsert({
-        shopify_id: customer.id,
-        first_name: customer.firstName ?? null,
-        last_name: customer.lastName ?? null,
-        email: customer.emailAddress?.emailAddress ?? null,
+        shopify_id: String(customer.id ?? ""),
+        first_name: String(customer.firstName ?? ""),
+        last_name: String(customer.lastName ?? ""),
+        email: String(
+          (customer.emailAddress as { emailAddress?: string })?.emailAddress ?? ""
+        ),
         updated_at: new Date().toISOString(),
       })
       .select()
@@ -123,8 +128,10 @@ export async function GET() {
 
     console.log("✅ Synced customer:", data?.email);
     return NextResponse.json({ ok: true, customer: data });
-  } catch (err) {
-    console.error("💥 /api/shopify-sync failed:", err);
-    return NextResponse.json({ ok: false, error: String(err) }, { status: 500 });
+  } catch (error: unknown) {
+    console.error("💥 /api/shopify-sync failed:", error);
+    const errMsg =
+      error instanceof Error ? error.message : JSON.stringify(error, null, 2);
+    return NextResponse.json({ ok: false, error: errMsg }, { status: 500 });
   }
 }
