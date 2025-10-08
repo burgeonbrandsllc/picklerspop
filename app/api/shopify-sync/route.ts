@@ -34,7 +34,17 @@ export async function GET() {
     }
 
     const apiConfig = await discovery.json();
-    const graphqlEndpoint = apiConfig.graphql_api as string;
+
+// Force the correct account subdomain if discovery returns the storefront
+let graphqlEndpoint = apiConfig.graphql_api as string;
+if (graphqlEndpoint.includes("picklerspop.com/customer/api")) {
+  graphqlEndpoint = graphqlEndpoint.replace(
+    "https://picklerspop.com",
+    "https://account.picklerspop.com"
+  );
+}
+
+console.log("✅ Using Customer GraphQL endpoint:", graphqlEndpoint);
 
     // ✅ Query Shopify Customer Account API
     const query = `
