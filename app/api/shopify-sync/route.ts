@@ -79,9 +79,12 @@ return NextResponse.json({ ok: false, raw: text }, { status: 400 });
       .single();
 
     if (error) {
-      console.error("Supabase upsert error:", error);
-      return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
-    }
+  console.error("Supabase upsert error:", error);
+  return NextResponse.json(
+    { ok: false, error: error?.message || "Unknown Supabase error" },
+    { status: 500 }
+  );
+}
 
     return NextResponse.json({ ok: true, customer: data });
   } catch (err) {
