@@ -14,7 +14,7 @@ export async function GET() {
     }
 
     const shopDomain = process.env.SHOPIFY_SHOP_DOMAIN!;
-    const apiDiscovery = await fetch(`https://${shopDomain}/.well-known/customer-account-api`);
+   const apiDiscovery = await fetch(`https://account.picklerspop.com/.well-known/customer-account-api`);
     const apiConfig = await apiDiscovery.json();
     const graphqlEndpoint = apiConfig.graphql_api;
 
