@@ -1,94 +1,107 @@
-// app/api/shopify-sync/route.ts
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { createClient } from "@supabase/supabase-js";
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+);
 
 export const runtime = "nodejs";
 
 export async function GET() {
   try {
-    const cookieJar = await cookies();
-    const token = cookieJar.get("customer_access_token")?.value;
+    const cookieStore = await cookies();
+    const token = cookieStore.get("customer_access_token")?.value;
+
     if (!token) {
-      return NextResponse.json({ ok: false, error: "No Shopify token" }, { status: 401 });
+      return NextResponse.json(
+        { ok: false, error: "No access token in cookies" },
+        { status: 401 }
+      );
     }
 
     const shopDomain = process.env.SHOPIFY_SHOP_DOMAIN!;
-   const apiDiscovery = await fetch(`https://account.picklerspop.com/.well-known/customer-account-api`);
-    const apiConfig = await apiDiscovery.json();
-    const graphqlEndpoint = apiConfig.graphql_api;
+    const discovery = await fetch(
+      `https://${shopDomain}/.well-known/customer-account-api`
+    );
 
-    // Query the customer profile
+    if (!discovery.ok) {
+      return NextResponse.json(
+        { ok: false, error: "Customer API discovery failed" },
+        { status: 500 }
+      );
+    }
+
+    const apiConfig = await discovery.json();
+    const graphqlEndpoint = apiConfig.graphql_api as string;
+
+    // ✅ Query Shopify Customer Account API
     const query = `
-      query getCustomer {
+      query {
         customer {
-          id
-          emailAddress { emailAddress }
           firstName
           lastName
+          emailAddress {
+            emailAddress
+          }
         }
       }
     `;
 
-    const res = await fetch(graphqlEndpoint, {
+    const graphqlRes = await fetch(graphqlEndpoint, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
+        // 👇 Must be "Bearer <token>" and token must start with "shcat_"
         Authorization: `Bearer ${token}`,
       },
       body: JSON.stringify({ query }),
     });
-const text = await res.text();
-console.log("Shopify raw response:", text.slice(0, 300));
-return NextResponse.json({ ok: false, raw: text }, { status: 400 });
 
-    const json = await res.json();
-    const customer = json.data?.customer;
-    if (!customer) {
-      console.error("Shopify query failed", json);
-      return NextResponse.json({ ok: false, error: "Invalid token" }, { status: 401 });
+    const raw = await graphqlRes.text();
+    let data;
+    try {
+      data = JSON.parse(raw);
+    } catch {
+      return NextResponse.json({ ok: false, raw }, { status: 502 });
     }
 
-    // Connect to Supabase
-    const supabase = createClient(
-      process.env.SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!
-    );
+    if (!graphqlRes.ok || data.errors) {
+      console.error("Shopify GraphQL error:", data);
+      return NextResponse.json({ ok: false, raw }, { status: 400 });
+    }
 
-    const { id: shopify_customer_id, emailAddress, firstName, lastName } = {
-      id: customer.id,
-      emailAddress: customer.emailAddress?.emailAddress,
-      firstName: customer.firstName,
-      lastName: customer.lastName,
-    };
+    const customer = data.data?.customer;
+    if (!customer) {
+      return NextResponse.json(
+        { ok: false, error: "No customer in response" },
+        { status: 404 }
+      );
+    }
 
-    // Upsert customer record
-    const { data, error } = await supabase
-      .from("shopify_customers")
-      .upsert(
-        {
-          shopify_customer_id,
-          email: emailAddress,
-          first_name: firstName,
-          last_name: lastName,
-          updated_at: new Date().toISOString(),
-        },
-        { onConflict: "shopify_customer_id" }
-      )
-      .select()
-      .single();
+    // ✅ Upsert into Supabase
+    const { error } = await supabase.from("customers").upsert({
+      email: customer.emailAddress?.emailAddress,
+      first_name: customer.firstName,
+      last_name: customer.lastName,
+      last_synced_at: new Date().toISOString(),
+    });
 
     if (error) {
-  console.error("Supabase upsert error:", error);
-  return NextResponse.json(
-    { ok: false, error: error?.message || "Unknown Supabase error" },
-    { status: 500 }
-  );
-}
+      console.error("Supabase upsert error:", error);
+      return NextResponse.json(
+        { ok: false, error: error.message },
+        { status: 500 }
+      );
+    }
 
-    return NextResponse.json({ ok: true, customer: data });
+    return NextResponse.json({ ok: true, customer });
   } catch (err) {
-    console.error("Shopify sync error:", err);
-    return NextResponse.json({ ok: false, error: String(err) }, { status: 500 });
+    console.error("shopify-sync exception:", err);
+    return NextResponse.json(
+      { ok: false, error: String(err) },
+      { status: 500 }
+    );
   }
 }
