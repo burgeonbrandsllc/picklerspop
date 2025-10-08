@@ -1,59 +1,95 @@
-// app/api/callback/route.ts
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { discoverAuthConfig } from "@/lib/shopifyAuth";
 
+// exchange authorization code for access token
 export async function GET(request: Request) {
-  const shopDomain = process.env.NEXT_PUBLIC_SHOPIFY_SHOP_DOMAIN!;
-  const clientId = process.env.NEXT_PUBLIC_SHOPIFY_CUSTOMER_API_CLIENT_ID!;
-  const clientSecret = process.env.SHOPIFY_CUSTOMER_API_CLIENT_SECRET!;
-  const redirectUri = process.env.NEXT_PUBLIC_REDIRECT_URI!;
+  try {
+    const url = new URL(request.url);
+    const code = url.searchParams.get("code");
+    const state = url.searchParams.get("state");
+    const error = url.searchParams.get("error");
 
-  const url = new URL(request.url);
-  const code = url.searchParams.get("code");
-  const error = url.searchParams.get("error");
+    if (error) {
+      return NextResponse.json({ error }, { status: 400 });
+    }
+    if (!code) {
+      return NextResponse.json({ error: "Missing code" }, { status: 400 });
+    }
 
-  // ✅ Fix: Await cookies()
-  const cookieStore = await cookies();
-  const verifier = cookieStore.get("pkce_verifier")?.value;
-  const storedState = cookieStore.get("oauth_state")?.value;
+    const cookieStore = cookies();
+    const verifier = cookieStore.get("pkce_verifier")?.value;
+    const storedState = cookieStore.get("oauth_state")?.value;
 
-  if (error === "login_required") {
-    return NextResponse.json({ authenticated: false, reason: "Login required" });
+    if (!verifier || state !== storedState) {
+      return NextResponse.json(
+        { error: "State or verifier mismatch" },
+        { status: 400 }
+      );
+    }
+
+    const shopDomain = process.env.SHOPIFY_SHOP_DOMAIN!;
+    const clientId = process.env.SHOPIFY_CLIENT_ID!;
+    const redirectUri = process.env.SHOPIFY_REDIRECT_URI!;
+
+    // Discover token endpoint
+    const discovery = await fetch(
+      `https://${shopDomain}/.well-known/openid-configuration`
+    );
+    const config = await discovery.json();
+    const tokenEndpoint = config.token_endpoint;
+
+    // Exchange code → token
+    const body = new URLSearchParams();
+    body.append("grant_type", "authorization_code");
+    body.append("client_id", clientId);
+    body.append("redirect_uri", redirectUri);
+    body.append("code", code);
+    body.append("code_verifier", verifier);
+
+    const tokenRes = await fetch(tokenEndpoint, {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body,
+    });
+
+    if (!tokenRes.ok) {
+      const text = await tokenRes.text();
+      console.error("TOKEN ERROR:", text);
+      return NextResponse.json({ error: text }, { status: 401 });
+    }
+
+    const tokenData = await tokenRes.json();
+    const accessToken = tokenData.access_token;
+    const idToken = tokenData.id_token;
+
+    if (!accessToken) {
+      return NextResponse.json(
+        { error: "No access token returned" },
+        { status: 401 }
+      );
+    }
+
+    // store tokens securely
+    cookieStore.set("customer_access_token", accessToken, {
+      httpOnly: true,
+      secure: true,
+      sameSite: "lax",
+      path: "/",
+    });
+    cookieStore.set("id_token", idToken ?? "", {
+      httpOnly: true,
+      secure: true,
+      sameSite: "lax",
+      path: "/",
+    });
+
+    // redirect back to home (or wherever)
+    return NextResponse.redirect(new URL("/", request.url));
+  } catch (err) {
+    console.error("CALLBACK ERROR:", err);
+    return NextResponse.json(
+      { error: String(err) },
+      { status: 500 }
+    );
   }
-
-  if (!code || !verifier) {
-    return NextResponse.json({ authenticated: false, reason: "Missing code or verifier" });
-  }
-
-  const authConfig = await discoverAuthConfig(shopDomain);
-
-  const body = new URLSearchParams({
-    grant_type: "authorization_code",
-    client_id: clientId,
-    redirect_uri: redirectUri,
-    code,
-    code_verifier: verifier,
-  });
-
-  const headers = {
-    "Content-Type": "application/x-www-form-urlencoded",
-    Authorization: "Basic " + Buffer.from(`${clientId}:${clientSecret}`).toString("base64"),
-  };
-
-  const tokenRes = await fetch(authConfig.token_endpoint, {
-    method: "POST",
-    headers,
-    body,
-  });
-
-  const tokenData = await tokenRes.json();
-  if (!tokenRes.ok) {
-    return NextResponse.json({ error: tokenData });
-  }
-
-  const res = NextResponse.redirect("https://picklerspop.com/account");
-  res.cookies.set("customer_access_token", tokenData.access_token, { httpOnly: true, secure: true, path: "/" });
-  res.cookies.set("customer_refresh_token", tokenData.refresh_token, { httpOnly: true, secure: true, path: "/" });
-  return res;
 }
