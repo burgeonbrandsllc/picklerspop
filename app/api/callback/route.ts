@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 
-// exchange authorization code for access token
 export async function GET(request: Request) {
   try {
     const url = new URL(request.url);
@@ -16,7 +15,8 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "Missing code" }, { status: 400 });
     }
 
-    const cookieStore = cookies();
+    // ✅ FIX: Await cookies() in Next.js 15+
+    const cookieStore = await cookies();
     const verifier = cookieStore.get("pkce_verifier")?.value;
     const storedState = cookieStore.get("oauth_state")?.value;
 
@@ -69,21 +69,26 @@ export async function GET(request: Request) {
       );
     }
 
-    // store tokens securely
+    // ✅ FIX: Await cookies() for setting values too
     cookieStore.set("customer_access_token", accessToken, {
       httpOnly: true,
       secure: true,
-      sameSite: "lax",
+      sameSite: "none",
       path: "/",
+      domain: ".picklerspop.com", // allows cross-subdomain
     });
+
     cookieStore.set("id_token", idToken ?? "", {
       httpOnly: true,
       secure: true,
-      sameSite: "lax",
+      sameSite: "none",
       path: "/",
+      domain: ".picklerspop.com",
     });
 
-    // redirect back to home (or wherever)
+    console.log("✅ Customer access token stored successfully");
+
+    // redirect back to home (or a confirmation page)
     return NextResponse.redirect(new URL("/", request.url));
   } catch (err) {
     console.error("CALLBACK ERROR:", err);
