@@ -1,70 +1,73 @@
+// app/api/login/route.ts
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
 
-function base64UrlEncode(buffer: ArrayBuffer) {
-  const bytes = new Uint8Array(buffer);
-  let binary = "";
-  bytes.forEach((b) => (binary += String.fromCharCode(b)));
-  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+export const runtime = "nodejs";
+
+// --- PKCE helpers ---
+function randomString(len = 32) {
+  const chars =
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+  let out = "";
+  for (let i = 0; i < len; i++) out += chars[Math.floor(Math.random() * chars.length)];
+  return out;
 }
-
-async function generateCodeVerifier() {
-  const array = new Uint8Array(32);
-  crypto.getRandomValues(array);
-  return base64UrlEncode(array.buffer);
-}
-
-async function generateCodeChallenge(verifier: string) {
-  const data = new TextEncoder().encode(verifier);
+async function sha256(input: string) {
+  const data = new TextEncoder().encode(input);
   const digest = await crypto.subtle.digest("SHA-256", data);
-  return base64UrlEncode(digest);
+  return new Uint8Array(digest);
+}
+function base64Url(bytes: Uint8Array) {
+  let str = "";
+  bytes.forEach((b) => (str += String.fromCharCode(b)));
+  return btoa(str).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+/g, "");
+}
+async function pkce() {
+  const verifier = base64Url(await sha256(randomString(32))); // strong random-ish
+  const challenge = base64Url(await sha256(verifier));
+  return { verifier, challenge };
 }
 
-export async function GET() {
-  try {
-    const shopDomain = process.env.SHOPIFY_SHOP_DOMAIN!;
-    const clientId = process.env.SHOPIFY_CLIENT_ID!;
-    const redirectUri = process.env.SHOPIFY_REDIRECT_URI!;
+export async function GET(request: Request) {
+  const shopDomain = process.env.SHOPIFY_SHOP_DOMAIN!;        // e.g. account.picklerspop.com
+  const clientId   = process.env.SHOPIFY_CLIENT_ID!;          // from Customer Accounts app
+  const redirectUri= process.env.SHOPIFY_REDIRECT_URI!;       // e.g. https://picklerspop.vercel.app/api/callback
 
-    // Discover authentication endpoints dynamically
-    const discoveryResponse = await fetch(
-      `https://${shopDomain}/.well-known/openid-configuration`
-    );
-    const authConfig = await discoveryResponse.json();
-    const authorizationEndpoint = authConfig.authorization_endpoint;
+  const url = new URL(request.url);
+  const interactive = url.searchParams.get("interactive");
+  const back = url.searchParams.get("back") || "/";
 
-    // Build PKCE + state
-    const codeVerifier = await generateCodeVerifier();
-    const codeChallenge = await generateCodeChallenge(codeVerifier);
-    const state = Math.random().toString(36).substring(2, 15);
-    const nonce = Math.random().toString(36).substring(2, 15);
-
-    // ✅ FIX: Await cookies() before using
-    const cookieStore = await cookies();
-    cookieStore.set("pkce_verifier", codeVerifier, { httpOnly: true, secure: true });
-    cookieStore.set("oauth_state", state, { httpOnly: true, secure: true });
-    cookieStore.set("oauth_nonce", nonce, { httpOnly: true, secure: true });
-
-    // Build authorization URL
-    const authUrl = new URL(authorizationEndpoint);
-    authUrl.searchParams.append("client_id", clientId);
-    authUrl.searchParams.append("scope", "openid email customer-account-api:full");
-    authUrl.searchParams.append("response_type", "code");
-    authUrl.searchParams.append("redirect_uri", redirectUri);
-    authUrl.searchParams.append("state", state);
-    authUrl.searchParams.append("nonce", nonce);
-    authUrl.searchParams.append("code_challenge", codeChallenge);
-    authUrl.searchParams.append("code_challenge_method", "S256");
-    authUrl.searchParams.append("prompt", "none");
-    authUrl.searchParams.append("locale", "en");
-
-    console.log("Redirecting to:", authUrl.toString());
-    return NextResponse.redirect(authUrl);
-  } catch (error) {
-    console.error("LOGIN ERROR:", error);
-    return NextResponse.json(
-      { error: String(error) },
-      { status: 500 }
-    );
+  // Discover endpoints
+  const discoveryRes = await fetch(`https://${shopDomain}/.well-known/openid-configuration`);
+  if (!discoveryRes.ok) {
+    return NextResponse.json({ error: "Discovery failed" }, { status: 500 });
   }
+  const authConfig = await discoveryRes.json();
+  const authorizeEndpoint = authConfig.authorization_endpoint as string;
+
+  const state = randomString(16);
+  const nonce = randomString(16);
+  const { verifier, challenge } = await pkce();
+
+  const authUrl = new URL(authorizeEndpoint);
+  authUrl.searchParams.set("scope", "openid email customer-account-api:full");
+  authUrl.searchParams.set("client_id", clientId);
+  authUrl.searchParams.set("response_type", "code");
+  authUrl.searchParams.set("redirect_uri", redirectUri);
+  authUrl.searchParams.set("state", state);
+  authUrl.searchParams.set("nonce", nonce);
+  authUrl.searchParams.set("code_challenge", challenge);
+  authUrl.searchParams.set("code_challenge_method", "S256");
+  authUrl.searchParams.set("locale", "en");
+  if (interactive !== "1") authUrl.searchParams.set("prompt", "none");
+
+  // Set cookies and redirect
+  const res = NextResponse.redirect(authUrl.toString());
+  // These can be HttpOnly (server reads them on callback)
+  res.cookies.set("pkce_verifier", verifier, { httpOnly: true, secure: true, sameSite: "lax", path: "/" });
+  res.cookies.set("oauth_state", state, { httpOnly: true, secure: true, sameSite: "lax", path: "/" });
+  res.cookies.set("oauth_nonce", nonce, { httpOnly: true, secure: true, sameSite: "lax", path: "/" });
+  // Non-HttpOnly so client can read as fallback (optional)
+  res.cookies.set("oauth_back", back, { httpOnly: false, secure: true, sameSite: "lax", path: "/" });
+
+  return res;
 }

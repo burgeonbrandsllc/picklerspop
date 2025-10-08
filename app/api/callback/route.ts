@@ -1,7 +1,8 @@
+// app/api/callback/route.ts
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 
-export const runtime = "nodejs"; // 👈 Force full Node.js runtime
+export const runtime = "nodejs";
 
 export async function GET(request: Request) {
   try {
@@ -11,34 +12,44 @@ export async function GET(request: Request) {
     const error = url.searchParams.get("error");
 
     if (error) {
-      console.error("Shopify OAuth error:", error);
-      return NextResponse.json({ error }, { status: 400 });
+      return new NextResponse(
+        `<pre>Shopify returned error: ${error}</pre>`,
+        { headers: { "Content-Type": "text/html; charset=utf-8" }, status: 400 }
+      );
     }
     if (!code) {
-      return NextResponse.json({ error: "Missing code" }, { status: 400 });
+      return new NextResponse(`<pre>Missing code</pre>`, {
+        headers: { "Content-Type": "text/html; charset=utf-8" },
+        status: 400,
+      });
     }
 
     const cookieStore = await cookies();
     const verifier = cookieStore.get("pkce_verifier")?.value;
     const storedState = cookieStore.get("oauth_state")?.value;
+    const backCookie = cookieStore.get("oauth_back")?.value;
 
     if (!verifier || state !== storedState) {
-      return NextResponse.json(
-        { error: "State or verifier mismatch" },
-        { status: 400 }
-      );
+      return new NextResponse(`<pre>State or verifier mismatch</pre>`, {
+        headers: { "Content-Type": "text/html; charset=utf-8" },
+        status: 400,
+      });
     }
 
     const shopDomain = process.env.SHOPIFY_SHOP_DOMAIN!;
     const clientId = process.env.SHOPIFY_CLIENT_ID!;
     const redirectUri = process.env.SHOPIFY_REDIRECT_URI!;
 
-    // Discover the token endpoint
-    const discovery = await fetch(
-      `https://${shopDomain}/.well-known/openid-configuration`
-    );
+    // Discover token endpoint
+    const discovery = await fetch(`https://${shopDomain}/.well-known/openid-configuration`);
+    if (!discovery.ok) {
+      return new NextResponse(`<pre>Discovery failed</pre>`, {
+        headers: { "Content-Type": "text/html; charset=utf-8" },
+        status: 500,
+      });
+    }
     const config = await discovery.json();
-    const tokenEndpoint = config.token_endpoint;
+    const tokenEndpoint = config.token_endpoint as string;
 
     const body = new URLSearchParams();
     body.append("grant_type", "authorization_code");
@@ -55,36 +66,66 @@ export async function GET(request: Request) {
 
     if (!tokenRes.ok) {
       const text = await tokenRes.text();
-      console.error("Token error:", text);
-      return NextResponse.json({ error: text }, { status: 401 });
+      return new NextResponse(`<pre>Token error:\n${text}</pre>`, {
+        headers: { "Content-Type": "text/html; charset=utf-8" },
+        status: 401,
+      });
     }
 
     const tokenData = await tokenRes.json();
-    const { access_token, id_token } = tokenData;
+    const accessToken = tokenData.access_token as string | undefined;
+    const idToken = tokenData.id_token as string | undefined;
 
-    if (!access_token) {
-      return NextResponse.json({ error: "No access token" }, { status: 401 });
+    if (!accessToken) {
+      return new NextResponse(`<pre>No access token</pre>`, {
+        headers: { "Content-Type": "text/html; charset=utf-8" },
+        status: 401,
+      });
     }
 
-    // ✅ Construct redirect manually to preserve cookies
-    const redirect = NextResponse.redirect(new URL("/", request.url));
+    // Choose where to go next
+    const backPath = backCookie && backCookie.startsWith("/") ? backCookie : "/";
 
-    // Add secure, cross-domain cookies
-    redirect.headers.append(
-      "Set-Cookie",
-      `customer_access_token=${access_token}; Path=/; HttpOnly; Secure; SameSite=None; Domain=.picklerspop.com; Max-Age=604800`
-    );
-    if (id_token) {
-      redirect.headers.append(
-        "Set-Cookie",
-        `id_token=${id_token}; Path=/; HttpOnly; Secure; SameSite=None; Domain=.picklerspop.com; Max-Age=604800`
-      );
+    // Inline page: set tokens client-side, promote to HttpOnly via /api/set-session, then redirect.
+    const html = `
+<!doctype html>
+<meta charset="utf-8" />
+<title>Signing you in…</title>
+<script>
+(function(){
+  var accessToken = ${JSON.stringify(accessToken)};
+  var idToken = ${JSON.stringify(idToken || "")};
+  var back = ${JSON.stringify(backPath)};
+
+  try {
+    // Local client storage (handy for client-only logic)
+    localStorage.setItem("shopify_customer_access_token", accessToken);
+    if (idToken) localStorage.setItem("shopify_id_token", idToken);
+
+    // Session cookie the client can read immediately
+    document.cookie = "customer_access_token=" + encodeURIComponent(accessToken) + "; Path=/; Secure; SameSite=Lax; Max-Age=604800";
+    if (idToken) {
+      document.cookie = "id_token=" + encodeURIComponent(idToken) + "; Path=/; Secure; SameSite=Lax; Max-Age=604800";
     }
+  } catch (e) {}
 
-    console.log("✅ Tokens set and redirecting home.");
-    return redirect;
+  // Promote to HttpOnly server cookie for SSR/APIs
+  fetch("/api/set-session", {
+    method: "POST",
+    headers: { "Content-Type":"application/json" },
+    body: JSON.stringify({ access_token: accessToken, id_token: idToken })
+  }).finally(function(){
+    window.location.replace(back);
+  });
+})();
+</script>`;
+    return new NextResponse(html, {
+      headers: { "Content-Type": "text/html; charset=utf-8" },
+    });
   } catch (err) {
-    console.error("Callback error:", err);
-    return NextResponse.json({ error: String(err) }, { status: 500 });
+    return new NextResponse(`<pre>Callback exception:\n${String(err)}</pre>`, {
+      headers: { "Content-Type": "text/html; charset=utf-8" },
+      status: 500,
+    });
   }
 }
