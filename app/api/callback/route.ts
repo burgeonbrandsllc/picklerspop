@@ -51,6 +51,8 @@ export async function GET(request: Request) {
         status: 500,
       });
     }
+const tokenData = await tokenRes.json();
+console.log("🔐 Shopify tokenData:", JSON.stringify(tokenData, null, 2));
 
     const config = await discoveryRes.json();
     const tokenEndpoint = config.token_endpoint as string;
