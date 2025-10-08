@@ -37,11 +37,11 @@ export async function GET(request: Request) {
       });
     }
 
-    // --- Discovery and token exchange ---
     const shopDomain = process.env.SHOPIFY_SHOP_DOMAIN!;
     const clientId = process.env.SHOPIFY_CLIENT_ID!;
     const redirectUri = process.env.SHOPIFY_REDIRECT_URI!;
 
+    // Discover token endpoint dynamically
     const discoveryRes = await fetch(
       `https://${shopDomain}/.well-known/openid-configuration`
     );
@@ -51,12 +51,11 @@ export async function GET(request: Request) {
         status: 500,
       });
     }
-const tokenData = await tokenRes.json();
-console.log("🔐 Shopify tokenData:", JSON.stringify(tokenData, null, 2));
 
     const config = await discoveryRes.json();
     const tokenEndpoint = config.token_endpoint as string;
 
+    // Exchange code for token
     const body = new URLSearchParams();
     body.append("grant_type", "authorization_code");
     body.append("client_id", clientId);
@@ -78,6 +77,7 @@ console.log("🔐 Shopify tokenData:", JSON.stringify(tokenData, null, 2));
       });
     }
 
+    // 👇 This is the single definition now
     const tokenData = await tokenRes.json();
     console.log("🔐 Shopify tokenData:", JSON.stringify(tokenData, null, 2));
 
@@ -93,15 +93,14 @@ console.log("🔐 Shopify tokenData:", JSON.stringify(tokenData, null, 2));
       });
     }
 
-    // Shopify expects Bearer tokens with prefix shcat_
+    // Shopify expects Bearer tokens prefixed with shcat_
     if (!accessToken.startsWith("shcat_")) {
       accessToken = `shcat_${accessToken}`;
     }
 
-    // --- Determine redirect destination ---
     const backPath = backCookie && backCookie.startsWith("/") ? backCookie : "/";
 
-    // --- Inline HTML for setting cookies + promotion to HttpOnly ---
+    // --- Inline HTML for setting cookies + promoting HttpOnly ---
     const html = `
 <!doctype html>
 <meta charset="utf-8" />
@@ -113,18 +112,15 @@ console.log("🔐 Shopify tokenData:", JSON.stringify(tokenData, null, 2));
   var back = ${JSON.stringify(backPath)};
 
   try {
-    // Local storage (debug or client utilities)
     localStorage.setItem("shopify_customer_access_token", accessToken);
     if (idToken) localStorage.setItem("shopify_id_token", idToken);
 
-    // Readable cookies for immediate access
     document.cookie = "customer_access_token=" + encodeURIComponent(accessToken) + "; Path=/; Secure; SameSite=Lax; Max-Age=604800";
     if (idToken) {
       document.cookie = "id_token=" + encodeURIComponent(idToken) + "; Path=/; Secure; SameSite=Lax; Max-Age=604800";
     }
   } catch (e) {}
 
-  // Promote to HttpOnly cookies via API
   fetch("/api/set-session", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
