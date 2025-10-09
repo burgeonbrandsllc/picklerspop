@@ -8,65 +8,56 @@ export const runtime = "nodejs";
 export async function GET() {
   try {
     const cookieStore = await cookies();
-    const accessToken = cookieStore.get("customer_access_token")?.value;
+    const token = cookieStore.get("customer_access_token")?.value;
 
-    if (!accessToken) {
+    if (!token) {
       return NextResponse.json(
-        { ok: false, reason: "No customer_access_token found" },
+        { ok: false, reason: "No token found in cookies" },
         { status: 401 }
       );
     }
 
-    // 🧠 Ensure proper prefix (re-add if something trimmed it)
-    const fullToken = accessToken.startsWith("shcat_")
-      ? accessToken
-      : `shcat_${accessToken}`;
+    // 🔒 Normalize token to ensure prefix
+    const accessToken = token.startsWith("shcat_")
+      ? token
+      : `shcat_${token}`;
 
-    // 🔍 Discover the current Customer Account API endpoint dynamically
+    console.log("🧩 Token starts with:", accessToken.slice(0, 12));
+    console.log("📏 Token length:", accessToken.length);
+
+    // Discover the proper customer GraphQL endpoint
     const shopDomain = process.env.SHOPIFY_SHOP_DOMAIN!;
     const discovery = await fetch(
       `https://${shopDomain}/.well-known/customer-account-api`
     );
-    if (!discovery.ok) {
-      const text = await discovery.text();
-      return NextResponse.json(
-        { ok: false, reason: "Discovery failed", raw: text },
-        { status: 500 }
-      );
-    }
     const config = await discovery.json();
     const graphqlEndpoint =
       config.graphql_api || `https://${shopDomain}/customer/api/graphql`;
 
-    // 🧾 Prepare GraphQL query
-    const gqlQuery = {
-      query: `
-        query {
-          customer {
-            id
-            firstName
-            lastName
-            emailAddress { emailAddress }
-          }
+    // 🔍 Test query
+    const query = `
+      query {
+        customer {
+          id
+          emailAddress { emailAddress }
+          firstName
+          lastName
         }
-      `,
-    };
+      }
+    `;
 
-    // 🛠️ Execute request
     const gqlRes = await fetch(graphqlEndpoint, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        // ✅ Shopify expects "Bearer shcat_..."
-        Authorization: `Bearer ${fullToken}`,
+        "Authorization": `Bearer ${accessToken}`,
       },
-      body: JSON.stringify(gqlQuery),
+      body: JSON.stringify({ query }),
     });
 
     const raw = await gqlRes.text();
 
-    // Debugging log (optional)
-    console.log("🔑 Sent token prefix:", fullToken.slice(0, 10));
+    console.log("🔑 Shopify endpoint:", graphqlEndpoint);
     console.log("🧾 Shopify raw response:", raw);
 
     if (!gqlRes.ok) {
@@ -78,9 +69,10 @@ export async function GET() {
 
     const parsed = JSON.parse(raw);
     const customer = parsed.data?.customer;
+
     if (!customer) {
       return NextResponse.json(
-        { ok: false, reason: "No customer returned", raw },
+        { ok: false, reason: "No customer object returned", raw },
         { status: 404 }
       );
     }
@@ -100,13 +92,13 @@ export async function GET() {
     });
 
     if (error) {
-      console.error("Supabase upsert error:", error);
+      console.error("❌ Supabase upsert error:", error);
       return NextResponse.json({ ok: false, reason: error.message }, { status: 500 });
     }
 
     return NextResponse.json({ ok: true, customer });
   } catch (err: unknown) {
-    console.error("Unexpected error:", err);
+    console.error("🔥 Unexpected error in /api/shopify-sync:", err);
     return NextResponse.json(
       { ok: false, reason: (err as Error).message },
       { status: 500 }
