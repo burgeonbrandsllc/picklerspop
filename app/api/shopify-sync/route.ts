@@ -17,14 +17,15 @@ export async function GET() {
       );
     }
 
-    // ✅ Ensure token has proper prefix
+    // ✅ Ensure correct prefix
     const accessToken = token.startsWith("shcat_") ? token : `shcat_${token}`;
 
     console.log("🧩 Token prefix:", accessToken.slice(0, 12));
     console.log("📏 Token length:", accessToken.length);
 
-    // ✅ Correct endpoint from your store’s well-known config
-    const graphqlEndpoint = "https://picklerspop.com/customer/api/graphql";
+    // ✅ Correct Customer Account API endpoint (domain-scoped)
+    const graphqlEndpoint =
+      "https://account.picklerspop.com/customer/api/graphql";
 
     // ✅ Shopify customer query
     const query = `
@@ -51,7 +52,6 @@ export async function GET() {
     });
 
     const raw = await gqlRes.text();
-
     console.log("🔑 Shopify endpoint:", graphqlEndpoint);
     console.log("🧾 Shopify raw response:", raw);
 
@@ -63,7 +63,7 @@ export async function GET() {
     }
 
     const parsed = JSON.parse(raw);
-    const customer = parsed.data?.customer;
+    const customer = parsed?.data?.customer;
 
     if (!customer) {
       return NextResponse.json(
@@ -72,30 +72,39 @@ export async function GET() {
       );
     }
 
-    // ✅ Sync to Supabase (optional)
-    const supabase = createClient(
-      process.env.SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!
-    );
+    // ✅ Optional: sync to Supabase
+    try {
+      const supabase = createClient(
+        process.env.SUPABASE_URL!,
+        process.env.SUPABASE_SERVICE_ROLE_KEY!
+      );
 
-    const { error } = await supabase.from("customers").upsert({
-      shopify_id: customer.id,
-      email: customer.emailAddress?.emailAddress,
-      first_name: customer.firstName,
-      last_name: customer.lastName,
-      updated_at: new Date().toISOString(),
-    });
+      const { error } = await supabase.from("customers").upsert({
+        shopify_id: customer.id,
+        email: customer.emailAddress?.emailAddress,
+        first_name: customer.firstName,
+        last_name: customer.lastName,
+        updated_at: new Date().toISOString(),
+      });
 
-    if (error) {
-      console.error("❌ Supabase upsert error:", error);
-      return NextResponse.json({ ok: false, reason: error.message }, { status: 500 });
+      if (error) {
+        console.error("❌ Supabase upsert error:", error);
+        return NextResponse.json(
+          { ok: false, reason: "Supabase error", details: error.message },
+          { status: 500 }
+        );
+      }
+    } catch (dbErr) {
+      console.error("⚠️ Supabase connection failed:", dbErr);
+      // Continue anyway
     }
 
     return NextResponse.json({ ok: true, customer });
-  } catch (err: unknown) {
-    console.error("🔥 Unexpected error in /api/shopify-sync:", err);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error("🔥 Unexpected error in /api/shopify-sync:", message);
     return NextResponse.json(
-      { ok: false, reason: (err as Error).message },
+      { ok: false, reason: message },
       { status: 500 }
     );
   }
