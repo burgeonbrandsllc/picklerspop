@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 
 // --- Types for clarity ---
 interface Customer {
@@ -23,7 +23,7 @@ interface ApiResponse {
   reason?: string;
 }
 
-export default function ShopifyTestPage(): JSX.Element {
+export default function ShopifyTestPage(): React.ReactElement {
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [error, setError] = useState<string | null>(null);
 
