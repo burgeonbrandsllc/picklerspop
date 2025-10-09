@@ -17,31 +17,25 @@ export async function GET() {
       );
     }
 
-    // 🔒 Normalize token to ensure prefix
-    const accessToken = token.startsWith("shcat_")
-      ? token
-      : `shcat_${token}`;
+    // ✅ Ensure token has proper prefix
+    const accessToken = token.startsWith("shcat_") ? token : `shcat_${token}`;
 
-    console.log("🧩 Token starts with:", accessToken.slice(0, 12));
+    console.log("🧩 Token prefix:", accessToken.slice(0, 12));
     console.log("📏 Token length:", accessToken.length);
 
-    // Discover the proper customer GraphQL endpoint
-    const shopDomain = process.env.SHOPIFY_SHOP_DOMAIN!;
-    const discovery = await fetch(
-      `https://${shopDomain}/.well-known/customer-account-api`
-    );
-    const config = await discovery.json();
-    const graphqlEndpoint =
-      config.graphql_api || `https://${shopDomain}/customer/api/graphql`;
+    // ✅ Correct endpoint from your store’s well-known config
+    const graphqlEndpoint = "https://picklerspop.com/customer/api/graphql";
 
-    // 🔍 Test query
+    // ✅ Shopify customer query
     const query = `
       query {
         customer {
           id
-          emailAddress { emailAddress }
           firstName
           lastName
+          emailAddress {
+            emailAddress
+          }
         }
       }
     `;
@@ -51,6 +45,7 @@ export async function GET() {
       headers: {
         "Content-Type": "application/json",
         "Authorization": `Bearer ${accessToken}`,
+        "Shopify-Store-Domain": "picklerspop.com",
       },
       body: JSON.stringify({ query }),
     });
@@ -63,7 +58,7 @@ export async function GET() {
     if (!gqlRes.ok) {
       return NextResponse.json(
         { ok: false, reason: "Shopify API error", raw },
-        { status: 400 }
+        { status: gqlRes.status }
       );
     }
 
@@ -77,7 +72,7 @@ export async function GET() {
       );
     }
 
-    // 🪣 Sync with Supabase
+    // ✅ Sync to Supabase (optional)
     const supabase = createClient(
       process.env.SUPABASE_URL!,
       process.env.SUPABASE_SERVICE_ROLE_KEY!
