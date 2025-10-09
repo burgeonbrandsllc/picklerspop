@@ -12,11 +12,6 @@ interface ShopifyCustomer {
   lastName: string | null;
 }
 
-interface ShopifyGraphQLResponse {
-  data?: { customer?: ShopifyCustomer };
-  errors?: { message: string }[];
-}
-
 export async function GET() {
   try {
     const cookieStore = await cookies();
@@ -32,8 +27,8 @@ export async function GET() {
     console.log("🔑 Token prefix:", token.substring(0, 10));
     console.log("📏 Token length:", token.length);
 
-    // ✅ Use account domain for Customer Account API
-    const graphqlEndpoint = "https://account.picklerspop.com/customer/api/graphql";
+    // ✅ Correct endpoint for customer account API
+    const graphqlEndpoint = "https://picklerspop.com/customer/api/graphql";
     console.log("✅ Using GraphQL endpoint:", graphqlEndpoint);
 
     const query = `
@@ -47,14 +42,13 @@ export async function GET() {
       }
     `;
 
-    // 4️⃣ Call Shopify with domain-matched headers
     const res = await fetch(graphqlEndpoint, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         "Authorization": `Bearer ${token}`,
-        "Origin": "https://account.picklerspop.com",
-        "Referer": "https://account.picklerspop.com/",
+        "Origin": "https://picklerspop.com",
+        "Referer": "https://picklerspop.com/",
       },
       body: JSON.stringify({ query }),
     });
@@ -70,15 +64,7 @@ export async function GET() {
       );
     }
 
-    let json: ShopifyGraphQLResponse;
-    try {
-      json = JSON.parse(rawText);
-    } catch {
-      return NextResponse.json(
-        { ok: false, reason: "Invalid JSON from Shopify", raw: rawText },
-        { status: 502 }
-      );
-    }
+    const json = JSON.parse(rawText);
 
     if (json.errors?.length) {
       console.error("🛑 Shopify GraphQL errors:", json.errors);
@@ -97,7 +83,7 @@ export async function GET() {
       );
     }
 
-    // ✅ Sync customer record to Supabase
+    // ✅ Sync to Supabase
     const supabase = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.SUPABASE_SERVICE_ROLE_KEY!
