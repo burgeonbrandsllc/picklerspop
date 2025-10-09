@@ -2,68 +2,80 @@
 
 import { useEffect, useState } from "react";
 
-interface ShopifyCustomer {
+interface Customer {
   id: string;
   email: string;
   firstName: string;
   lastName: string;
 }
 
-interface ShopifyResponse {
-  data?: { customer?: ShopifyCustomer };
+interface GraphQLResponse {
+  data?: { customer?: Customer };
   errors?: { message: string }[];
 }
 
 export default function ShopifyCustomerFetcher() {
-  const [data, setData] = useState<ShopifyResponse | null>(null);
+  const [customer, setCustomer] = useState<Customer | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    async function load(): Promise<void> {
+    async function loadCustomer(): Promise<void> {
       try {
+        // Step 1: Get the token from your backend
         const res = await fetch("/api/shopify-sync");
         const json: { ok: boolean; token?: string; reason?: string } = await res.json();
         if (!json.ok || !json.token) throw new Error(json.reason || "Missing token");
 
         const token = json.token;
 
-        // Now fetch from Shopify directly in the browser
-        const shopifyRes = await fetch("https://picklerspop.com/customer/api/graphql", {
+        // Step 2: Call Shopify from the browser
+        const graphql = "https://picklerspop.com/customer/api/graphql";
+        const query = `
+          query {
+            customer {
+              id
+              email
+              firstName
+              lastName
+            }
+          }
+        `;
+
+        const shopifyRes = await fetch(graphql, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
             Authorization: `Bearer ${token}`,
           },
-          body: JSON.stringify({
-            query: `
-              query {
-                customer {
-                  id
-                  email
-                  firstName
-                  lastName
-                }
-              }
-            `,
-          }),
+          body: JSON.stringify({ query }),
         });
 
-        const shopifyJson: ShopifyResponse = await shopifyRes.json();
-        setData(shopifyJson);
+        if (!shopifyRes.ok) throw new Error(`Shopify HTTP ${shopifyRes.status}`);
+        const data: GraphQLResponse = await shopifyRes.json();
+
+        if (data.errors?.length) {
+          throw new Error(data.errors.map(e => e.message).join(", "));
+        }
+
+        if (!data.data?.customer) throw new Error("No customer object returned");
+
+        setCustomer(data.data.customer);
       } catch (err: unknown) {
         console.error(err);
         setError(err instanceof Error ? err.message : String(err));
       }
     }
-    load();
+
+    loadCustomer();
   }, []);
 
   if (error) return <pre style={{ color: "red" }}>Error: {error}</pre>;
-  if (!data) return <p>Loading...</p>;
+  if (!customer) return <p>Loading customer data...</p>;
 
   return (
-    <pre style={{ whiteSpace: "pre-wrap", wordWrap: "break-word" }}>
-      {JSON.stringify(data, null, 2)}
-    </pre>
+    <div style={{ fontFamily: "monospace" }}>
+      <h3>Customer Profile</h3>
+      <pre>{JSON.stringify(customer, null, 2)}</pre>
+    </div>
   );
 }
