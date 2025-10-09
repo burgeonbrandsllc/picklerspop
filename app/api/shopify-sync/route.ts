@@ -17,13 +17,8 @@ interface ShopifyGraphQLResponse {
   errors?: { message: string }[];
 }
 
-/**
- * Shopify Customer Sync → Supabase
- * Clean token passthrough, force correct domain, full debug
- */
 export async function GET() {
   try {
-    // 1️⃣ Token
     const cookieStore = await cookies();
     const token = cookieStore.get("customer_access_token")?.value;
 
@@ -34,14 +29,8 @@ export async function GET() {
       );
     }
 
-    console.log("🔑 Token prefix:", token.substring(0, 10));
-    console.log("📏 Token length:", token.length);
-
-    // 2️⃣ Force correct Shopify domain (storefront, not account)
     const graphqlEndpoint = "https://picklerspop.com/customer/api/graphql";
-    console.log("✅ Forced GraphQL endpoint:", graphqlEndpoint);
 
-    // 3️⃣ Build GraphQL query
     const query = `
       query GetCustomer {
         customer {
@@ -53,12 +42,15 @@ export async function GET() {
       }
     `;
 
-    // 4️⃣ Make request
+    //  Add Shopify-required headers
     const res = await fetch(graphqlEndpoint, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`, // Pass token cleanly
+        "Authorization": `Bearer ${token}`,
+        "Origin": "https://picklerspop.com",
+        "Shopify-Storefront-Access-Token": process.env.SHOPIFY_STOREFRONT_TOKEN!,
+        "Shopify-Storefront-Buyer-IP": "127.0.0.1"
       },
       body: JSON.stringify({ query }),
     });
@@ -74,18 +66,9 @@ export async function GET() {
       );
     }
 
-    let json: ShopifyGraphQLResponse;
-    try {
-      json = JSON.parse(rawText);
-    } catch {
-      return NextResponse.json(
-        { ok: false, reason: "Invalid JSON from Shopify", raw: rawText },
-        { status: 502 }
-      );
-    }
+    const json = JSON.parse(rawText) as ShopifyGraphQLResponse;
 
     if (json.errors?.length) {
-      console.error("❌ Shopify GraphQL errors:", json.errors);
       return NextResponse.json(
         { ok: false, reason: "GraphQL error", raw: json.errors },
         { status: 400 }
@@ -100,7 +83,6 @@ export async function GET() {
       );
     }
 
-    // 5️⃣ Sync → Supabase
     const supabase = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.SUPABASE_SERVICE_ROLE_KEY!
@@ -115,19 +97,13 @@ export async function GET() {
     });
 
     if (error) {
-      console.error("❌ Supabase upsert error:", error);
       return NextResponse.json({ ok: false, reason: "Supabase error", error }, { status: 500 });
     }
-
-    console.log("✅ Customer synced:", customer.email);
 
     return NextResponse.json({
       ok: true,
       customer,
-      debug: {
-        graphqlEndpoint,
-        status: res.status,
-      },
+      debug: { graphqlEndpoint, status: res.status },
     });
   } catch (err) {
     console.error("💥 Uncaught error in Shopify Sync:", err);
