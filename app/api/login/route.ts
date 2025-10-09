@@ -6,28 +6,27 @@ export const runtime = "nodejs";
 
 /**
  * Shopify Customer Account OAuth (PKCE + silent auth)
- * Redirects customer to Shopify's authorize endpoint
- * Uses root domain (https://picklerspop.com) for token scope.
+ * For use on app.picklerspop.com
  */
 export async function GET(request: Request) {
   try {
-    const shopDomain = process.env.SHOPIFY_SHOP_DOMAIN || "picklerspop.com";
+    const shopDomain = process.env.SHOPIFY_SHOP_DOMAIN!; // account.picklerspop.com
     const clientId = process.env.SHOPIFY_CLIENT_ID!;
-    const redirectUri = process.env.SHOPIFY_REDIRECT_URI || "https://picklerspop.com/api/callback";
+    const redirectUri = process.env.SHOPIFY_REDIRECT_URI!; // https://app.picklerspop.com/api/callback
 
     if (!shopDomain || !clientId || !redirectUri) {
-      return new NextResponse("❌ Missing required environment variables.", { status: 500 });
+      return new NextResponse("Missing environment variables", { status: 500 });
     }
 
-    // ---- 1️⃣ PKCE code verifier + challenge ----
+    // ---- 1️⃣ PKCE verifier + challenge ----
     const codeVerifier = generateRandomString(64);
     const challenge = await generateCodeChallenge(codeVerifier);
 
-    // ---- 2️⃣ Security state + nonce ----
+    // ---- 2️⃣ State + nonce ----
     const state = generateRandomString(16);
     const nonce = generateRandomString(16);
 
-    // ---- 3️⃣ Store verifier + state + nonce in secure cookies ----
+    // ---- 3️⃣ Store verifier + state + nonce ----
     const cookieStore = await cookies();
     cookieStore.set("pkce_verifier", codeVerifier, {
       httpOnly: true,
@@ -51,13 +50,12 @@ export async function GET(request: Request) {
       maxAge: 600,
     });
 
-    // ---- 4️⃣ Discover the shop’s authorization endpoint ----
+    // ---- 4️⃣ Discover from account.picklerspop.com ----
     const discoveryUrl = `https://${shopDomain}/.well-known/openid-configuration`;
     const discoveryRes = await fetch(discoveryUrl);
 
     if (!discoveryRes.ok) {
       const txt = await discoveryRes.text();
-      console.error("❌ Discovery failed:", txt);
       return new NextResponse(`Discovery failed:\n${txt}`, {
         status: 502,
         headers: { "Content-Type": "text/plain; charset=utf-8" },
@@ -65,11 +63,7 @@ export async function GET(request: Request) {
     }
 
     const config = await discoveryRes.json();
-    let authorizationEndpoint = config.authorization_endpoint as string;
-
-    // 🧩 Force use of root-domain endpoint (avoid account.)
-    // If the discovery returns "account.picklerspop.com", normalize it
-    authorizationEndpoint = authorizationEndpoint.replace("account.", "");
+    const authorizationEndpoint = config.authorization_endpoint as string;
 
     // ---- 5️⃣ Build the authorization request ----
     const authUrl = new URL(authorizationEndpoint);
@@ -81,12 +75,12 @@ export async function GET(request: Request) {
     authUrl.searchParams.set("nonce", nonce);
     authUrl.searchParams.set("code_challenge", challenge);
     authUrl.searchParams.set("code_challenge_method", "S256");
-    authUrl.searchParams.set("prompt", "none"); // silent login
+    authUrl.searchParams.set("prompt", "none");
     authUrl.searchParams.set("locale", "en");
 
-    console.log("🔐 Redirecting to Shopify Auth URL:", authUrl.toString());
+    console.log("🔐 Redirecting to:", authUrl.toString());
 
-    // ---- 6️⃣ Redirect user to Shopify Customer Account login ----
+    // ---- 6️⃣ Redirect user to Shopify login ----
     return NextResponse.redirect(authUrl);
   } catch (err: unknown) {
     console.error("❌ /api/login failed:", err);
