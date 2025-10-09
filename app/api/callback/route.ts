@@ -121,13 +121,15 @@ export async function GET(request: Request) {
     }
   } catch (e) {}
 
-  fetch("/api/set-session", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ access_token: accessToken, id_token: idToken })
-  }).finally(function(){
-    window.location.replace(back);
-  });
+  // Promote to HttpOnly server cookie for SSR/APIs
+fetch("/api/set-session", {
+  method: "POST",
+  headers: { "Content-Type":"application/json" },
+  body: JSON.stringify({ access_token: accessToken, id_token: idToken })
+}).finally(function(){
+  window.location.replace(back);
+});
+
 })();
 </script>`;
 
