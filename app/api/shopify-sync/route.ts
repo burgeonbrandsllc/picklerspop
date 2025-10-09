@@ -29,7 +29,12 @@ export async function GET() {
       );
     }
 
-    const graphqlEndpoint = "https://picklerspop.com/customer/api/graphql";
+    console.log("🔑 Token prefix:", token.substring(0, 10));
+    console.log("📏 Token length:", token.length);
+
+    // ✅ Correct endpoint for new customer accounts
+    const graphqlEndpoint = "https://account.picklerspop.com/customer/api/graphql";
+    console.log("✅ Using GraphQL endpoint:", graphqlEndpoint);
 
     const query = `
       query GetCustomer {
@@ -42,15 +47,14 @@ export async function GET() {
       }
     `;
 
-    //  Add Shopify-required headers
+    // 4️⃣ Call Shopify with full headers
     const res = await fetch(graphqlEndpoint, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         "Authorization": `Bearer ${token}`,
         "Origin": "https://picklerspop.com",
-        "Shopify-Storefront-Access-Token": process.env.SHOPIFY_STOREFRONT_TOKEN!,
-        "Shopify-Storefront-Buyer-IP": "127.0.0.1"
+        "Referer": "https://picklerspop.com/",
       },
       body: JSON.stringify({ query }),
     });
@@ -66,7 +70,15 @@ export async function GET() {
       );
     }
 
-    const json = JSON.parse(rawText) as ShopifyGraphQLResponse;
+    let json: ShopifyGraphQLResponse;
+    try {
+      json = JSON.parse(rawText);
+    } catch {
+      return NextResponse.json(
+        { ok: false, reason: "Invalid JSON from Shopify", raw: rawText },
+        { status: 502 }
+      );
+    }
 
     if (json.errors?.length) {
       return NextResponse.json(
@@ -83,6 +95,7 @@ export async function GET() {
       );
     }
 
+    // ✅ Sync to Supabase
     const supabase = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.SUPABASE_SERVICE_ROLE_KEY!
@@ -97,8 +110,11 @@ export async function GET() {
     });
 
     if (error) {
+      console.error("❌ Supabase upsert error:", error);
       return NextResponse.json({ ok: false, reason: "Supabase error", error }, { status: 500 });
     }
+
+    console.log("✅ Customer synced:", customer.email);
 
     return NextResponse.json({
       ok: true,
