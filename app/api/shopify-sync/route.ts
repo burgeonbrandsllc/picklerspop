@@ -17,13 +17,28 @@ export async function GET() {
       );
     }
 
-    // Discover the GraphQL endpoint dynamically
-    const shopDomain = process.env.SHOPIFY_SHOP_DOMAIN!;
-    const discovery = await fetch(`https://${shopDomain}/.well-known/customer-account-api`);
-    const config = await discovery.json();
-    const graphqlEndpoint = config.graphql_api || `https://${shopDomain}/customer/api/graphql`;
+    // 🧠 Ensure proper prefix (re-add if something trimmed it)
+    const fullToken = accessToken.startsWith("shcat_")
+      ? accessToken
+      : `shcat_${accessToken}`;
 
-    // Query Shopify Customer Account API
+    // 🔍 Discover the current Customer Account API endpoint dynamically
+    const shopDomain = process.env.SHOPIFY_SHOP_DOMAIN!;
+    const discovery = await fetch(
+      `https://${shopDomain}/.well-known/customer-account-api`
+    );
+    if (!discovery.ok) {
+      const text = await discovery.text();
+      return NextResponse.json(
+        { ok: false, reason: "Discovery failed", raw: text },
+        { status: 500 }
+      );
+    }
+    const config = await discovery.json();
+    const graphqlEndpoint =
+      config.graphql_api || `https://${shopDomain}/customer/api/graphql`;
+
+    // 🧾 Prepare GraphQL query
     const gqlQuery = {
       query: `
         query {
@@ -37,16 +52,22 @@ export async function GET() {
       `,
     };
 
+    // 🛠️ Execute request
     const gqlRes = await fetch(graphqlEndpoint, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "Authorization": `Bearer ${accessToken}`,
+        // ✅ Shopify expects "Bearer shcat_..."
+        Authorization: `Bearer ${fullToken}`,
       },
       body: JSON.stringify(gqlQuery),
     });
 
     const raw = await gqlRes.text();
+
+    // Debugging log (optional)
+    console.log("🔑 Sent token prefix:", fullToken.slice(0, 10));
+    console.log("🧾 Shopify raw response:", raw);
 
     if (!gqlRes.ok) {
       return NextResponse.json(
@@ -55,16 +76,16 @@ export async function GET() {
       );
     }
 
-    const data = JSON.parse(raw);
-    const customer = data.data?.customer;
+    const parsed = JSON.parse(raw);
+    const customer = parsed.data?.customer;
     if (!customer) {
       return NextResponse.json(
-        { ok: false, reason: "No customer data", raw },
+        { ok: false, reason: "No customer returned", raw },
         { status: 404 }
       );
     }
 
-    // Push to Supabase
+    // 🪣 Sync with Supabase
     const supabase = createClient(
       process.env.SUPABASE_URL!,
       process.env.SUPABASE_SERVICE_ROLE_KEY!
