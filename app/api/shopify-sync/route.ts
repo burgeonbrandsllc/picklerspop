@@ -1,13 +1,25 @@
 // app/api/shopify-sync/route.ts
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { createClient } from "@supabase/supabase-js";
+import { createClient, PostgrestError } from "@supabase/supabase-js";
 
 export const runtime = "nodejs";
 
+interface ShopifyCustomer {
+  id: string;
+  email: string;
+  firstName: string | null;
+  lastName: string | null;
+}
+
+interface ShopifyGraphQLResponse {
+  data?: { customer?: ShopifyCustomer };
+  errors?: { message: string }[];
+}
+
 /**
  * Shopify Customer Sync → Supabase
- * Clean token passthrough (no modifications) + detailed debug logging
+ * Clean token passthrough + detailed debug logging
  */
 export async function GET() {
   try {
@@ -40,7 +52,7 @@ export async function GET() {
       );
     }
 
-    const discoveryData = await discoveryRes.json();
+    const discoveryData = (await discoveryRes.json()) as { graphql_api: string };
     const graphqlEndpoint = discoveryData.graphql_api;
 
     console.log("✅ GraphQL endpoint:", graphqlEndpoint);
@@ -62,7 +74,7 @@ export async function GET() {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`, // ⚠️ use raw token
+        Authorization: `Bearer ${token}`,
       },
       body: JSON.stringify({ query }),
     });
@@ -79,7 +91,7 @@ export async function GET() {
       );
     }
 
-    let json: any;
+    let json: ShopifyGraphQLResponse;
     try {
       json = JSON.parse(rawText);
     } catch {
@@ -90,15 +102,15 @@ export async function GET() {
       );
     }
 
-    if (json.errors) {
+    if (json.errors && json.errors.length > 0) {
       console.error("❌ Shopify GraphQL errors:", json.errors);
       return NextResponse.json(
-        { ok: false, reason: "GraphQL error", raw: json },
+        { ok: false, reason: "GraphQL error", raw: json.errors },
         { status: 400 }
       );
     }
 
-    const customer = json?.data?.customer;
+    const customer = json.data?.customer;
     if (!customer) {
       console.error("⚠️ No customer data returned:", json);
       return NextResponse.json(
@@ -121,7 +133,7 @@ export async function GET() {
       updated_at: new Date().toISOString(),
     });
 
-    if (error) {
+    if (error as PostgrestError) {
       console.error("❌ Supabase upsert error:", error);
       return NextResponse.json({ ok: false, reason: "Supabase error", error }, { status: 500 });
     }
@@ -137,7 +149,7 @@ export async function GET() {
         status: res.status,
       },
     });
-  } catch (err) {
+  } catch (err: unknown) {
     console.error("💥 Uncaught error in Shopify Sync:", err);
     return NextResponse.json(
       { ok: false, reason: "Internal server error", error: String(err) },
