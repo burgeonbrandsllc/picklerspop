@@ -2,16 +2,28 @@
 
 import { useEffect, useState } from "react";
 
+interface ShopifyCustomer {
+  id: string;
+  email: string;
+  firstName: string;
+  lastName: string;
+}
+
+interface ShopifyResponse {
+  data?: { customer?: ShopifyCustomer };
+  errors?: { message: string }[];
+}
+
 export default function ShopifyCustomerFetcher() {
-  const [data, setData] = useState<any>(null);
+  const [data, setData] = useState<ShopifyResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    async function load() {
+    async function load(): Promise<void> {
       try {
         const res = await fetch("/api/shopify-sync");
-        const json = await res.json();
-        if (!json.ok) throw new Error(json.reason);
+        const json: { ok: boolean; token?: string; reason?: string } = await res.json();
+        if (!json.ok || !json.token) throw new Error(json.reason || "Missing token");
 
         const token = json.token;
 
@@ -36,11 +48,11 @@ export default function ShopifyCustomerFetcher() {
           }),
         });
 
-        const shopifyJson = await shopifyRes.json();
+        const shopifyJson: ShopifyResponse = await shopifyRes.json();
         setData(shopifyJson);
-      } catch (err: any) {
+      } catch (err: unknown) {
         console.error(err);
-        setError(String(err));
+        setError(err instanceof Error ? err.message : String(err));
       }
     }
     load();

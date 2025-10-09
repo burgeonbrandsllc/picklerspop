@@ -8,7 +8,7 @@ export const runtime = "nodejs";
  * Shopify Customer Account OAuth (PKCE + silent auth)
  * For use on app.picklerspop.com
  */
-export async function GET(request: Request) {
+export async function GET() {
   try {
     const shopDomain = process.env.SHOPIFY_SHOP_DOMAIN!; // account.picklerspop.com
     const clientId = process.env.SHOPIFY_CLIENT_ID!;
