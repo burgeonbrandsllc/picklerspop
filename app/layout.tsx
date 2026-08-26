@@ -4,6 +4,7 @@ import "./globals.css";
 import { SupabaseProvider } from "@/components/SupabaseProvider";
 import ShopifyBridge from "@/components/ShopifyBridge"; // ✅ import bridge
 import ShopifyAuthStatus from "@/components/ShopifyAuthStatus";
+import PlayerProfileButton from "@/components/PlayerProfileButton";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -32,8 +33,9 @@ export default function RootLayout({
       >
         <SupabaseProvider>
           <ShopifyBridge /> {/* ✅ loads Shopify session */}
-          <div className="px-4 py-2">
+          <div className="flex items-center justify-between gap-3 px-4 py-2">
             <ShopifyAuthStatus />
+            <PlayerProfileButton />
           </div>
           {children}
         </SupabaseProvider>
