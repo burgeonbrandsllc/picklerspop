@@ -15,19 +15,86 @@ type Facility = {
   lights?: boolean;
 };
 
+type SearchMode = "text" | "radius";
+
+const INITIAL_RADIUS_MILES = 10;
+const METERS_PER_MILE = 1609.344;
+
+function isFullZipCode(value: string) {
+  return /^\d{5}$/.test(value);
+}
+
 export default function SearchableFacilityList() {
   const [facilities, setFacilities] = useState<Facility[]>([]);
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(false);
   const [searched, setSearched] = useState(false);
   const [page, setPage] = useState(0);
+  const [searchMode, setSearchMode] = useState<SearchMode>("text");
+  const [errorMessage, setErrorMessage] = useState("");
   const pageSize = 20;
 
   async function handleSearch(e: React.FormEvent) {
     e.preventDefault();
+
+    const query = search.trim();
+    if (!query) return;
+
     setLoading(true);
     setSearched(true);
     setPage(0);
+    setErrorMessage("");
+    setFacilities([]);
+
+    if (isFullZipCode(query)) {
+      setSearchMode("radius");
+
+      try {
+        const geocodeResponse = await fetch(
+          `/api/geocode-zip?zip=${encodeURIComponent(query)}`
+        );
+        const geocode: {
+          latitude?: number;
+          longitude?: number;
+          error?: string;
+        } = await geocodeResponse.json();
+
+        if (
+          !geocodeResponse.ok ||
+          typeof geocode.latitude !== "number" ||
+          typeof geocode.longitude !== "number"
+        ) {
+          throw new Error(geocode.error || "Unable to locate that ZIP code.");
+        }
+
+        const { data, error } = await supabase.rpc(
+          "facilities_within_radius",
+          {
+            ref_lat: geocode.latitude,
+            ref_lng: geocode.longitude,
+            radius_m: INITIAL_RADIUS_MILES * METERS_PER_MILE,
+          }
+        );
+
+        if (error) {
+          throw error;
+        }
+
+        setFacilities((data as Facility[]) || []);
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : "Unable to search by ZIP code.";
+        console.error("Error loading nearby facilities:", error);
+        setErrorMessage(message);
+        setFacilities([]);
+      } finally {
+        setLoading(false);
+      }
+
+      return;
+    }
+
+    setSearchMode("text");
 
     const { data, error } = await supabase
       .from("facilities")
@@ -45,6 +112,7 @@ export default function SearchableFacilityList() {
 
     if (error) {
       console.error("Error loading facilities:", error.message);
+      setErrorMessage("Unable to load facilities. Please try again.");
       setFacilities([]);
     } else {
       setFacilities((data as Facility[]) || []);
@@ -89,6 +157,8 @@ export default function SearchableFacilityList() {
     setFacilities([]);
     setSearched(false);
     setPage(0);
+    setSearchMode("text");
+    setErrorMessage("");
   }
 
   return (
@@ -124,10 +194,22 @@ export default function SearchableFacilityList() {
         <>
           {loading && facilities.length === 0 ? (
             <p>Loading...</p>
+          ) : errorMessage ? (
+            <p className="text-red-600">{errorMessage}</p>
           ) : facilities.length === 0 ? (
-            <p className="text-gray-500">No facilities found.</p>
+            <p className="text-gray-500">
+              {searchMode === "radius"
+                ? `No facilities found within ${INITIAL_RADIUS_MILES} miles.`
+                : "No facilities found."}
+            </p>
           ) : (
             <>
+              {searchMode === "radius" && (
+                <p className="mb-3 text-sm text-gray-600">
+                  Showing {facilities.length} facilities within{" "}
+                  {INITIAL_RADIUS_MILES} miles of ZIP {search.trim()}.
+                </p>
+              )}
               <ul className="space-y-2">
                 {facilities.map((f) => (
                   <li key={f.id} className="border p-3 rounded">
@@ -143,15 +225,17 @@ export default function SearchableFacilityList() {
                   </li>
                 ))}
               </ul>
-              <div className="mt-4">
-                <button
-                  onClick={loadMore}
-                  disabled={loading}
-                  className="bg-green-600 text-white px-4 py-2 rounded"
-                >
-                  {loading ? "Loading..." : "Load more"}
-                </button>
-              </div>
+              {searchMode === "text" && (
+                <div className="mt-4">
+                  <button
+                    onClick={loadMore}
+                    disabled={loading}
+                    className="bg-green-600 text-white px-4 py-2 rounded"
+                  >
+                    {loading ? "Loading..." : "Load more"}
+                  </button>
+                </div>
+              )}
             </>
           )}
         </>

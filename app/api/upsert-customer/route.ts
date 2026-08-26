@@ -27,18 +27,34 @@ export async function POST(request: Request) {
     }
 
     const payload = {
-      shopify_id: String(body.id),
+      shopify_customer_id: String(body.id),
       email: body.email ?? "",
       first_name: body.firstName ?? "",
       last_name: body.lastName ?? "",
       updated_at: new Date().toISOString(),
     };
 
-    const { data, error } = await supabase
-      .from("customers")
-      .upsert(payload)
-      .select()
-      .single();
+    const { data: existing, error: lookupError } = await supabase
+      .from("shopify_customers")
+      .select("id")
+      .eq("shopify_customer_id", payload.shopify_customer_id)
+      .maybeSingle();
+
+    if (lookupError) {
+      return NextResponse.json(
+        { ok: false, error: lookupError.message },
+        { status: 500 }
+      );
+    }
+
+    const query = existing
+      ? supabase
+          .from("shopify_customers")
+          .update(payload)
+          .eq("id", existing.id)
+      : supabase.from("shopify_customers").insert(payload);
+
+    const { data, error } = await query.select().single();
 
     if (error) {
       return NextResponse.json(

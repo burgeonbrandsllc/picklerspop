@@ -3,17 +3,19 @@ import { supabaseServer } from "@/lib/supabaseServer";
 
 
 interface FacilityPageProps {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 }
 
 export default async function FacilityPage({ params }: FacilityPageProps) {
+  const { id } = await params;
+
   // Fetch facility details server-side
    const supabase = await supabaseServer(); // ✅ await added
 
   const { data: facility, error } = await supabase
     .from("facilities")
     .select("*")
-    .eq("id", params.id)
+    .eq("id", id)
     .single();
 
   if (error) {
@@ -49,7 +51,7 @@ export default async function FacilityPage({ params }: FacilityPageProps) {
 
       {/* Client-side review form + list */}
       <section className="mt-6">
-        <ClientReviews facilityId={params.id} />
+        <ClientReviews facilityId={id} />
       </section>
     </main>
   );

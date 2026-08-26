@@ -50,6 +50,12 @@ export default function ReviewForm({ facilityId, onReviewAdded }: ReviewFormProp
         return;
       }
 
+      if (!supabaseSession.playerId) {
+        setMessage("⚠️ Unable to identify your player profile. Please refresh and try again.");
+        setLoading(false);
+        return;
+      }
+
       // Step 3️⃣: Set Supabase auth session locally
       const { error: sessionError } = await supabase.auth.setSession({
         access_token: supabaseSession.session?.access_token,
@@ -66,10 +72,9 @@ export default function ReviewForm({ facilityId, onReviewAdded }: ReviewFormProp
       // Step 4️⃣: Submit review
       const { error } = await supabase.from("reviews").insert({
         facility_id: facilityId,
+        player_id: supabaseSession.playerId,
         rating,
         comment,
-        user_id: supabaseSession.user?.id,
-        customer_email: shopifyCustomer.email,
       });
 
       if (error) {

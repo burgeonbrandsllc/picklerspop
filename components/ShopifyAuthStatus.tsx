@@ -6,6 +6,15 @@ export default function ShopifyAuthStatus() {
   const [status, setStatus] = useState("Checking Shopify authentication...");
 
   useEffect(() => {
+    const isLocalAuthDisabled =
+      process.env.NODE_ENV === "development" &&
+      process.env.NEXT_PUBLIC_DISABLE_SHOPIFY_AUTH === "true";
+
+    if (isLocalAuthDisabled) {
+      setStatus("Shopify authentication disabled for local development.");
+      return;
+    }
+
     const params = new URLSearchParams(window.location.search);
     const loginRequired = params.get("shopify") === "login_required";
     const callbackError = params.get("shopify_error");
@@ -27,18 +36,26 @@ export default function ShopifyAuthStatus() {
         const res = await fetch("/api/session", {
           credentials: "include",
         });
+
+        const data: { authenticated?: boolean; reason?: string } =
+          await res.json();
+
+        // A missing/expired session is an expected authentication state, not
+        // a failed session-check request. Start the Shopify OAuth flow.
+        if (res.status === 401 || !data.authenticated) {
+          if (!cancelled) {
+            setStatus("Requesting Shopify session...");
+            window.location.href = "/api/login";
+          }
+          return;
+        }
+
         if (!res.ok) {
           throw new Error(`Session check failed (${res.status})`);
         }
-        const data: { authenticated?: boolean } = await res.json();
         if (cancelled) return;
 
-        if (!data.authenticated) {
-          setStatus("Requesting Shopify session...");
-          window.location.href = "/api/login";
-        } else {
-          setStatus("Authenticated with Shopify Customer Account API");
-        }
+        setStatus("Authenticated with Shopify Customer Account API");
       } catch (err) {
         console.error("Failed to check Shopify session", err);
         if (!cancelled) {

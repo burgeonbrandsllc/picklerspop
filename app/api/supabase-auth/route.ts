@@ -11,6 +11,8 @@ import { createHash } from "node:crypto";
 type ShopifyCustomer = {
   id: string;
   email: string;
+  firstName?: string;
+  lastName?: string;
 };
 
 type ShopifySessionResult =
@@ -20,6 +22,7 @@ type ShopifySessionResult =
 type SuccessResponse = {
   authenticated: true;
   customer: ShopifyCustomer;
+  playerId: string;
   user: User;
   session: Pick<Session, "access_token" | "refresh_token" | "expires_in" | "expires_at" | "token_type">;
 };
@@ -74,6 +77,56 @@ function derivePassword(shopifyId: string, secretSeed: string): string {
     .update(`${shopifyId}:${secretSeed}`)
     .digest("hex");
   return hash.slice(0, 64); // at least 6 characters, deterministic per customer
+}
+
+async function upsertShopifyCustomer(
+  adminClient: SupabaseClient,
+  customer: ShopifyCustomer
+): Promise<string> {
+  const values = {
+    shopify_customer_id: customer.id,
+    email: customer.email,
+    first_name: customer.firstName ?? null,
+    last_name: customer.lastName ?? null,
+    updated_at: new Date().toISOString(),
+  };
+
+  const { data: existing, error: lookupError } = await adminClient
+    .from("shopify_customers")
+    .select("id")
+    .eq("shopify_customer_id", customer.id)
+    .maybeSingle();
+
+  if (lookupError) {
+    throw lookupError;
+  }
+
+  if (existing) {
+    const { data, error } = await adminClient
+      .from("shopify_customers")
+      .update(values)
+      .eq("id", existing.id)
+      .select("id")
+      .single();
+
+    if (error) {
+      throw error;
+    }
+
+    return data.id;
+  }
+
+  const { data, error } = await adminClient
+    .from("shopify_customers")
+    .insert(values)
+    .select("id")
+    .single();
+
+  if (error) {
+    throw error;
+  }
+
+  return data.id;
 }
 
 async function findUserByEmail(
@@ -216,19 +269,18 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { error: upsertError } = await adminClient
-      .from("users")
-      .upsert(
+    let playerId: string;
+    try {
+      playerId = await upsertShopifyCustomer(adminClient, customer);
+    } catch (customerError) {
+      console.error("Failed to upsert shopify_customers entry:", customerError);
+      return NextResponse.json<FailureResponse>(
         {
-          id: authUser.id,
-          email: customer.email,
-          shopify_customer_id: customer.id,
+          authenticated: false,
+          reason: "Failed to save Shopify customer",
         },
-        { onConflict: "id" }
+        { status: 500 }
       );
-
-    if (upsertError) {
-      console.warn("Failed to upsert users table entry:", upsertError);
     }
 
     const anonClient = createClient(supabaseUrl, supabaseAnonKey, {
@@ -259,6 +311,7 @@ export async function POST(request: NextRequest) {
     const responseBody: SuccessResponse = {
       authenticated: true,
       customer,
+      playerId,
       user: signInData.user,
       session: {
         access_token: session.access_token,
