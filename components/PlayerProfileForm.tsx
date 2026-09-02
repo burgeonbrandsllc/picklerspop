@@ -35,7 +35,7 @@ function metadataValue(
   return typeof value === "string" ? value : "";
 }
 
-const inputClass = "rounded-md border border-slate-300 px-3 py-2";
+const inputClass = "rounded-md border border-slate-300 bg-[#fbfbf7] px-3 py-2";
 
 export default function PlayerProfileForm() {
   const { user, session } = useSupabaseAuth();
@@ -143,33 +143,33 @@ export default function PlayerProfileForm() {
   return (
     <form
       onSubmit={handleSubmit}
-      className="grid gap-6 rounded-lg border border-slate-200 bg-white p-5 shadow-sm"
+      className="grid gap-6 rounded-lg border border-slate-300 bg-[#f7f8f3] p-5 shadow-sm"
     >
       <fieldset disabled={loading || saving} className="grid gap-5">
         <section>
-          <h2 className="text-lg font-semibold">Profile information</h2>
+          <h2 className="text-xl font-semibold">Profile information</h2>
           <div className="mt-4 grid gap-4 md:grid-cols-2">
-            <label className="grid gap-1 text-sm font-medium">
+            <label className="grid gap-1 text-base font-medium">
               Username
               <input className={inputClass} value={profile.username} onChange={(event) => updateField("username", event.target.value)} autoComplete="username" />
             </label>
-            <label className="grid gap-1 text-sm font-medium">
+            <label className="grid gap-1 text-base font-medium">
               Email
               <input className={inputClass} value={profile.email} onChange={(event) => updateField("email", event.target.value)} autoComplete="email" type="email" />
             </label>
-            <label className="grid gap-1 text-sm font-medium">
+            <label className="grid gap-1 text-base font-medium">
               First name
               <input className={inputClass} value={profile.first_name} onChange={(event) => updateField("first_name", event.target.value)} autoComplete="given-name" />
             </label>
-            <label className="grid gap-1 text-sm font-medium">
+            <label className="grid gap-1 text-base font-medium">
               Last name
               <input className={inputClass} value={profile.last_name} onChange={(event) => updateField("last_name", event.target.value)} autoComplete="family-name" />
             </label>
-            <label className="grid gap-1 text-sm font-medium">
+            <label className="grid gap-1 text-base font-medium">
               Mobile number
               <input className={inputClass} value={profile.mobile_number} onChange={(event) => updateField("mobile_number", event.target.value)} autoComplete="tel" />
             </label>
-            <label className="grid gap-1 text-sm font-medium">
+            <label className="grid gap-1 text-base font-medium">
               ZIP code
               <input className={inputClass} value={profile.zip_code} onChange={(event) => updateField("zip_code", event.target.value)} autoComplete="postal-code" inputMode="numeric" />
             </label>
@@ -177,17 +177,17 @@ export default function PlayerProfileForm() {
         </section>
 
         <section>
-          <h2 className="text-lg font-semibold">Player attributes</h2>
+          <h2 className="text-xl font-semibold">Player attributes</h2>
           <div className="mt-4 grid gap-4 md:grid-cols-3">
-            <label className="grid gap-1 text-sm font-medium">
+            <label className="grid gap-1 text-base font-medium">
               Rating
               <input className={inputClass} value={profile.rating} onChange={(event) => updateField("rating", event.target.value)} inputMode="decimal" placeholder="3.5" />
             </label>
-            <label className="grid gap-1 text-sm font-medium">
+            <label className="grid gap-1 text-base font-medium">
               Location
               <input className={inputClass} value={profile.location} onChange={(event) => updateField("location", event.target.value)} autoComplete="address-level2" />
             </label>
-            <label className="grid gap-1 text-sm font-medium">
+            <label className="grid gap-1 text-base font-medium">
               Gender
               <select className={inputClass} value={profile.gender} onChange={(event) => updateField("gender", event.target.value)}>
                 <option value="">Select</option>
@@ -203,12 +203,12 @@ export default function PlayerProfileForm() {
       </fieldset>
 
       <div className="flex flex-wrap items-center gap-3">
-        <button type="submit" disabled={loading || saving} className="rounded-md bg-emerald-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-slate-400">
+        <button type="submit" disabled={loading || saving} className="rounded-md bg-emerald-600 px-4 py-2 text-base font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-slate-400">
           {saving ? "Saving..." : "Save profile"}
         </button>
-        {loading && <p className="text-sm text-slate-600">Loading profile...</p>}
-        {message && <p className="text-sm font-medium text-emerald-700">{message}</p>}
-        {error && <p className="text-sm font-medium text-red-700">{error}</p>}
+        {loading && <p className="text-base text-slate-600">Loading profile...</p>}
+        {message && <p className="text-base font-medium text-emerald-700">{message}</p>}
+        {error && <p className="text-base font-medium text-red-700">{error}</p>}
       </div>
     </form>
   );

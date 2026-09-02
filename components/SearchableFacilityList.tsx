@@ -230,10 +230,14 @@ export default function SearchableFacilityList() {
 
   const startResult = totalCount === 0 ? 0 : page * PAGE_SIZE + 1;
   const endResult = Math.min((page + 1) * PAGE_SIZE, totalCount);
+  const mapFacilities = pageFacilities.map((facility, index) => ({
+    ...facility,
+    resultNumber: page * PAGE_SIZE + index + 1,
+  }));
 
   return (
-    <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-      <div className="border-b border-slate-200 bg-slate-50 p-4">
+    <div className="overflow-hidden rounded-xl border border-slate-300 bg-[#f7f8f3] shadow-sm">
+      <div className="border-b border-slate-300 bg-[#eef3ef] p-4">
         <form onSubmit={handleSearch} className="flex flex-col gap-2 sm:flex-row">
           <input
             ref={inputRef}
@@ -241,7 +245,7 @@ export default function SearchableFacilityList() {
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             placeholder="Search by name, city, state, or ZIP"
-            className="min-w-0 flex-1 rounded-md border border-slate-300 bg-white px-3 py-2 text-slate-950"
+            className="min-w-0 flex-1 rounded-md border border-slate-300 bg-[#fbfbf7] px-3 py-2 text-slate-950"
             autoComplete="off"
             spellCheck={false}
           />
@@ -252,7 +256,7 @@ export default function SearchableFacilityList() {
             <button type="button" onClick={clearSearch} className="rounded-md bg-slate-200 px-4 py-2 font-medium text-slate-800 hover:bg-slate-300">Clear</button>
           )}
         </form>
-        <p className="mt-2 text-xs text-slate-500">
+        <p className="mt-2 text-base text-slate-500">
           Enter a full five-digit ZIP for nearby facilities, or search by facility name, city, or state.
         </p>
       </div>
@@ -271,9 +275,9 @@ export default function SearchableFacilityList() {
         </div>
       ) : (
         <div className="grid min-h-[36rem] lg:grid-cols-2">
-          <div className="h-72 border-b border-slate-200 bg-slate-950 lg:h-auto lg:border-b-0 lg:border-r">
+          <div className="h-72 border-b border-slate-300 bg-slate-950 lg:h-auto lg:border-b-0 lg:border-r">
             <FacilityMap
-              facilities={pageFacilities}
+              facilities={mapFacilities}
               highlightedFacilityId={highlightedFacilityId}
               onPinClick={(id) => {
                 setHighlightedFacilityId(id);
@@ -283,7 +287,7 @@ export default function SearchableFacilityList() {
           </div>
 
           <div id="facility-results" className="max-h-[46rem] overflow-y-auto p-4">
-            <div className="mb-3 text-sm text-slate-600">
+            <div className="mb-3 text-base text-slate-600">
               {resultMode === "radius" ? (
                 <span>Showing {totalCount} facilities within <strong>{radiusMiles} miles</strong> of ZIP {submittedQuery}.</span>
               ) : (
@@ -291,7 +295,7 @@ export default function SearchableFacilityList() {
               )}
             </div>
 
-            {errorMessage && <p className="mb-3 rounded-md bg-red-50 p-2 text-sm text-red-700">{errorMessage}</p>}
+            {errorMessage && <p className="mb-3 rounded-md bg-red-50 p-2 text-base text-red-700">{errorMessage}</p>}
 
             <ol className="space-y-2">
               {pageFacilities.map((facility, index) => {
@@ -302,13 +306,13 @@ export default function SearchableFacilityList() {
                     key={facility.id}
                     id={`facility-${facility.id}`}
                     onClick={() => setHighlightedFacilityId(facility.id)}
-                    className={`flex cursor-pointer items-start gap-3 rounded-lg border p-3 transition ${highlighted ? "border-blue-500 bg-blue-50" : "border-slate-200 hover:bg-slate-50"}`}
+                    className={`flex cursor-pointer items-start gap-3 rounded-lg border p-3 transition ${highlighted ? "border-blue-500 bg-blue-50" : "border-slate-300 hover:bg-[#eef3ef]"}`}
                   >
-                    <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-blue-600 text-xs font-semibold text-white">{resultNumber}</span>
+                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-blue-600 text-base font-semibold text-white">{resultNumber}</span>
                     <div className="min-w-0">
                       <Link href={`/facilities/${facility.id}`} className="font-semibold text-blue-700 underline hover:text-blue-900" onClick={(event) => event.stopPropagation()}>{facility.name}</Link>
-                      <div className="text-sm text-slate-600">{facility.city}, {facility.state} {facility.zip_code}</div>
-                      {facility.court_count != null && <div className="mt-1 text-xs text-slate-500">{facility.court_count} court{facility.court_count === 1 ? "" : "s"}</div>}
+                      <div className="text-base text-slate-600">{facility.city}, {facility.state} {facility.zip_code}</div>
+                      {facility.court_count != null && <div className="mt-1 text-base text-slate-500">{facility.court_count} court{facility.court_count === 1 ? "" : "s"}</div>}
                     </div>
                   </li>
                 );
@@ -323,9 +327,9 @@ export default function SearchableFacilityList() {
 
             {totalPages > 1 && (
               <nav className="mt-4 flex items-center justify-between gap-3 border-t pt-4" aria-label="Facility result pages">
-                <button type="button" onClick={() => goToPage(page - 1)} disabled={page === 0 || loading} className="rounded-md border border-slate-300 px-3 py-1.5 text-sm disabled:opacity-40">Previous</button>
-                <span className="text-sm text-slate-600">Page {page + 1} of {totalPages}</span>
-                <button type="button" onClick={() => goToPage(page + 1)} disabled={page >= totalPages - 1 || loading} className="rounded-md border border-slate-300 px-3 py-1.5 text-sm disabled:opacity-40">Next</button>
+                <button type="button" onClick={() => goToPage(page - 1)} disabled={page === 0 || loading} className="rounded-md border border-slate-300 px-3 py-1.5 text-base disabled:opacity-40">Previous</button>
+                <span className="text-base text-slate-600">Page {page + 1} of {totalPages}</span>
+                <button type="button" onClick={() => goToPage(page + 1)} disabled={page >= totalPages - 1 || loading} className="rounded-md border border-slate-300 px-3 py-1.5 text-base disabled:opacity-40">Next</button>
               </nav>
             )}
           </div>

@@ -72,7 +72,7 @@ export default function ShopifyAuthStatus() {
   }, []);
 
   return (
-    <div className="text-sm text-gray-600" aria-live="polite">
+    <div className="text-base text-gray-600" aria-live="polite">
       {status}
     </div>
   );

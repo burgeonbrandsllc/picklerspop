@@ -96,13 +96,13 @@ export default function ReviewForm({ facilityId, onReviewAdded }: ReviewFormProp
   };
 
   return (
-    <form onSubmit={handleSubmit} className="border p-4 rounded mt-6 space-y-3">
-      <h3 className="font-semibold text-lg">Leave a Review</h3>
+    <form onSubmit={handleSubmit} className="mt-6 space-y-3 rounded border border-slate-300 bg-[#f7f8f3] p-4 text-slate-900">
+      <h3 className="text-xl font-semibold text-slate-950">Leave a Review</h3>
 
       <label className="block">
-        <span className="text-sm font-medium">Rating</span>
+        <span className="text-base font-medium text-slate-900">Rating</span>
         <select
-          className="mt-1 border rounded p-2 w-full"
+          className="mt-1 w-full rounded border border-slate-300 bg-[#fbfbf7] p-2 text-slate-950 placeholder:text-slate-500"
           value={rating}
           onChange={(e) => setRating(Number(e.target.value))}
           disabled={loading}
@@ -116,9 +116,9 @@ export default function ReviewForm({ facilityId, onReviewAdded }: ReviewFormProp
       </label>
 
       <label className="block">
-        <span className="text-sm font-medium">Comment</span>
+        <span className="text-base font-medium text-slate-900">Comment</span>
         <textarea
-          className="mt-1 border rounded p-2 w-full"
+          className="mt-1 w-full rounded border border-slate-300 bg-[#fbfbf7] p-2 text-slate-950 placeholder:text-slate-500"
           rows={3}
           value={comment}
           onChange={(e) => setComment(e.target.value)}
@@ -135,7 +135,7 @@ export default function ReviewForm({ facilityId, onReviewAdded }: ReviewFormProp
         {loading ? "Submitting..." : "Submit Review"}
       </button>
 
-      {message && <p className="text-sm mt-2">{message}</p>}
+      {message && <p className="mt-2 text-base text-slate-900">{message}</p>}
     </form>
   );
 }

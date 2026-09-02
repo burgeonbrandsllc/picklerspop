@@ -21,7 +21,7 @@ export default function AuthDebugger() {
   }, []);
 
   return (
-    <div className="p-2 bg-gray-100 text-sm rounded mt-4">
+    <div className="p-2 bg-gray-100 text-base rounded mt-4">
       {output}
     </div>
   );

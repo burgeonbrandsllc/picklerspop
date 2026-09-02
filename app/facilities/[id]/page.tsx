@@ -36,13 +36,13 @@ function AttributeSection({ title, values, labels }: {
   const items = Array.isArray(values) ? values : values ? [values] : [];
   return (
     <div className="mt-5">
-      <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-gray-500">{title}</h2>
+      <h2 className="mb-2 text-base font-semibold uppercase tracking-wide text-gray-500">{title}</h2>
       {items.length === 0 ? (
-        <p className="text-sm italic text-gray-400">Not specified</p>
+        <p className="text-base italic text-gray-400">Not specified</p>
       ) : (
         <div className="flex flex-wrap gap-2">
           {items.map((value) => (
-            <span key={value} className="inline-block rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-sm font-medium text-blue-800">
+            <span key={value} className="inline-block rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-base font-medium text-blue-800">
               {labels[value] ?? value}
             </span>
           ))}
@@ -54,7 +54,7 @@ function AttributeSection({ title, values, labels }: {
 
 function InfoRow({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex items-baseline gap-2 text-sm">
+    <div className="flex items-baseline gap-2 text-base">
       <span className="w-28 shrink-0 text-gray-500">{label}</span>
       <span className="font-medium text-gray-800">{value}</span>
     </div>
@@ -84,11 +84,11 @@ export default async function FacilityPage({ params }: FacilityPageProps) {
 
   return (
     <main className="mx-auto max-w-2xl p-6">
-      <Link href="/" className="mb-5 inline-block text-sm font-medium text-blue-600 hover:underline">← Back to facility search</Link>
-      <h1 className="text-2xl font-bold text-gray-900">{facility.name}</h1>
-      <p className="mt-1 text-sm text-gray-500">{address}</p>
+      <Link href="/" className="mb-5 inline-block text-base font-medium text-blue-600 hover:underline">← Back to facility search</Link>
+      <h1 className="text-3xl font-bold text-gray-500">{facility.name}</h1>
+      <p className="mt-1 text-base text-gray-500">{address}</p>
       {address && (
-        <a href={directionsUrl} target="_blank" rel="noopener noreferrer" className="mt-2 inline-block text-sm font-medium text-blue-600 hover:underline">Open directions</a>
+        <a href={directionsUrl} target="_blank" rel="noopener noreferrer" className="mt-2 inline-block text-base font-medium text-blue-600 hover:underline">Open directions</a>
       )}
 
       <div className="mt-5 space-y-1.5 rounded-lg border bg-gray-50 p-4">

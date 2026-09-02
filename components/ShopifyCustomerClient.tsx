@@ -170,7 +170,7 @@ export default function ShopifyCustomerClient({
   }, [autoSync]);
 
   return (
-    <div className="border rounded p-3 text-sm">
+    <div className="border rounded p-3 text-base">
       <div className="font-medium mb-1">Shopify Customer Fallback (Client)</div>
       <div>Status: {status}</div>
       {error && <div className="text-red-600 mt-1">Error: {error}</div>}

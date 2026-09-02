@@ -49,24 +49,24 @@ export default function ReviewList({ facilityId, refreshSignal }: ReviewListProp
   }, [fetchReviews, refreshSignal]);
 
   return (
-    <section className="mt-4">
+    <section className="mt-4 text-slate-900">
       {loading ? (
-        <p className="text-gray-500">Loading reviews...</p>
+        <p className="text-slate-500">Loading reviews...</p>
       ) : reviews.length === 0 ? (
-        <p className="text-gray-500">No reviews yet. Be the first to share your thoughts!</p>
+        <p className="text-slate-500">No reviews yet. Be the first to share your thoughts!</p>
       ) : (
         <ul className="space-y-4">
           {reviews.map((r) => (
-            <li key={r.id} className="border rounded-lg p-4 shadow-sm bg-white">
+            <li key={r.id} className="rounded-lg border border-slate-300 bg-[#f7f8f3] p-4 text-slate-900 shadow-sm">
               <div className="flex justify-between items-center mb-1">
                 <span className="font-medium">
                   {r.customer_name || "Anonymous"} — ⭐ {r.rating}
                 </span>
-                <span className="text-xs text-gray-400">
+                <span className="text-base text-slate-600">
                   {new Date(r.created_at).toLocaleDateString()}
                 </span>
               </div>
-              <p className="text-sm text-gray-700">
+              <p className="text-base text-slate-900">
                 {r.comment || "No comment provided."}
               </p>
             </li>

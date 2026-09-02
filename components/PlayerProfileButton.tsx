@@ -27,7 +27,7 @@ export default function PlayerProfileButton() {
       href="/profile"
       aria-label="Open player profile"
       title="Player profile"
-      className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-emerald-700 bg-emerald-600 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2"
+      className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-emerald-700 bg-emerald-600 text-base font-semibold text-white shadow-sm transition hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2"
     >
       {initial}
     </Link>
