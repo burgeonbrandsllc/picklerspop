@@ -109,9 +109,9 @@ export default function FacilityMap({
         scrollWheelZoom: true,
       });
 
-      leaflet.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-        maxZoom: 19,
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+      leaflet.tileLayer("https://tiles.stadiamaps.com/tiles/osm_bright/{z}/{x}/{y}{r}.png", {
+        maxZoom: 20,
+        attribution: '&copy; <a href="https://stadiamaps.com/" target="_blank">Stadia Maps</a> &copy; <a href="https://openmaptiles.org/" target="_blank">OpenMapTiles</a> &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a>',
       }).addTo(mapRef.current);
 
       mapRef.current.setView([39.8283, -98.5795], 4);
@@ -196,6 +196,15 @@ export default function FacilityMap({
     }).addTo(map);
   }, [mapReady, userLocation]);
 
+  function showUserLocation() {
+    const map = mapRef.current;
+    if (!map || !userLocation) return;
+
+    map.setView([userLocation.latitude, userLocation.longitude], map.getZoom(), {
+      animate: true,
+    });
+  }
+
   const focusFacility =
     mappedFacilities.find((facility) => facility.id === highlightedFacilityId) ??
     mappedFacilities[0];
@@ -224,6 +233,18 @@ export default function FacilityMap({
             No mappable facilities found for this result set.
           </div>
         ) : null}
+        <button
+          type="button"
+          onClick={showUserLocation}
+          disabled={!userLocation}
+          aria-label="Show your location"
+          title={userLocation ? "Show your location" : "Current location unavailable"}
+          className="absolute left-[10px] top-[86px] z-[1000] flex h-[34px] w-[34px] items-center justify-center rounded-sm border-2 border-black/20 bg-white text-slate-800 shadow-sm hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          <svg viewBox="0 0 24 24" aria-hidden="true" className="h-[18px] w-[18px] fill-current">
+            <path d="M12 8a4 4 0 1 1 0 8 4 4 0 0 1 0-8Zm8.94 3A9.004 9.004 0 0 0 13 3.06V1h-2v2.06A9.004 9.004 0 0 0 3.06 11H1v2h2.06A9.004 9.004 0 0 0 11 20.94V23h2v-2.06A9.004 9.004 0 0 0 20.94 13H23v-2h-2.06ZM12 19a7 7 0 1 1 0-14 7 7 0 0 1 0 14Z" />
+          </svg>
+        </button>
         <div ref={mapElementRef} className="h-full min-h-72 w-full" />
       </div>
 
