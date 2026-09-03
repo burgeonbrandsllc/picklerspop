@@ -75,3 +75,21 @@ button {
 .facility-map-pin > span {
   transform: rotate(45deg);
 }
+.facility-map-user-pin {
+  align-items: center;
+  background: #D16002;
+  border: 3px solid #ffffff;
+  border-radius: 9999px;
+  box-shadow: 0 10px 18px rgba(15, 23, 42, 0.32);
+  color: #ffffff;
+  display: flex;
+  height: 37px;
+  justify-content: center;
+  width: 37px;
+}
+
+.facility-map-user-pin svg {
+  fill: currentColor;
+  height: 25px;
+  width: 25px;
+}

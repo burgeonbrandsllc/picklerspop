@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { LatLngBoundsExpression, Map as LeafletMap, Marker } from "leaflet";
 
 type LeafletModule = typeof import("leaflet");
@@ -15,10 +15,17 @@ type MappedFacility = {
   resultNumber?: number;
 };
 
+type MapLocation = {
+  latitude: number;
+  longitude: number;
+};
+
 interface FacilityMapProps {
   facilities: MappedFacility[];
   highlightedFacilityId: string | null;
   onPinClick: (id: string) => void;
+  initialMode?: boolean;
+  centerLocation?: MapLocation | null;
 }
 
 function isFiniteCoordinate(value: number | null | undefined) {
@@ -35,15 +42,30 @@ function createNumberedIcon(leaflet: LeafletModule, number: number, active: bool
   });
 }
 
+function createUserLocationIcon(leaflet: LeafletModule) {
+  return leaflet.divIcon({
+    className: "",
+    html: '<div class="facility-map-user-pin" aria-label="Current user location" style="background:#D16002;height:37px;width:37px"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4Zm0 2c-3.31 0-6 2.02-6 4.5 0 .83.67 1.5 1.5 1.5h9c.83 0 1.5-.67 1.5-1.5 0-2.48-2.69-4.5-6-4.5Z" /></svg></div>',
+    iconSize: [37, 37],
+    iconAnchor: [19, 19],
+    popupAnchor: [0, -18],
+  });
+}
+
 export default function FacilityMap({
   facilities,
   highlightedFacilityId,
   onPinClick,
+  initialMode = false,
+  centerLocation = null,
 }: FacilityMapProps) {
   const mapElementRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<LeafletMap | null>(null);
   const leafletRef = useRef<LeafletModule | null>(null);
   const markersRef = useRef<Marker[]>([]);
+  const userMarkerRef = useRef<Marker | null>(null);
+  const [mapReady, setMapReady] = useState(false);
+  const [userLocation, setUserLocation] = useState<MapLocation | null>(null);
 
   const mappedFacilities = useMemo(
     () =>
@@ -54,6 +76,23 @@ export default function FacilityMap({
       ),
     [facilities]
   );
+
+  useEffect(() => {
+    if (!("geolocation" in navigator)) return;
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        setUserLocation({
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude,
+        });
+      },
+      () => {
+        setUserLocation(null);
+      },
+      { enableHighAccuracy: false, maximumAge: 300000, timeout: 10000 }
+    );
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -74,6 +113,9 @@ export default function FacilityMap({
         maxZoom: 19,
         attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
       }).addTo(mapRef.current);
+
+      mapRef.current.setView([39.8283, -98.5795], 4);
+      setMapReady(true);
     }
 
     loadMap();
@@ -84,18 +126,29 @@ export default function FacilityMap({
       mapRef.current = null;
       leafletRef.current = null;
       markersRef.current = [];
+      userMarkerRef.current = null;
+      setMapReady(false);
     };
   }, []);
 
   useEffect(() => {
     const map = mapRef.current;
     const leaflet = leafletRef.current;
-    if (!map || !leaflet) return;
+    if (!mapReady || !map || !leaflet) return;
 
     markersRef.current.forEach((marker) => marker.remove());
     markersRef.current = [];
 
-    if (mappedFacilities.length === 0) return;
+    requestAnimationFrame(() => map.invalidateSize());
+    window.setTimeout(() => map.invalidateSize(), 150);
+
+    if (mappedFacilities.length === 0) {
+      const emptyStateCenter = centerLocation ?? (initialMode ? userLocation : null);
+      if (emptyStateCenter) {
+        map.setView([emptyStateCenter.latitude, emptyStateCenter.longitude], 12);
+      }
+      return;
+    }
 
     const bounds: LatLngBoundsExpression = mappedFacilities.map((facility) => [
       facility.latitude as number,
@@ -121,7 +174,27 @@ export default function FacilityMap({
     } else {
       map.fitBounds(bounds, { padding: [32, 32], maxZoom: 13 });
     }
-  }, [highlightedFacilityId, mappedFacilities, onPinClick]);
+
+    requestAnimationFrame(() => map.invalidateSize());
+    window.setTimeout(() => map.invalidateSize(), 250);
+  }, [centerLocation, highlightedFacilityId, initialMode, mapReady, mappedFacilities, onPinClick, userLocation]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    const leaflet = leafletRef.current;
+    if (!mapReady || !map || !leaflet) return;
+
+    userMarkerRef.current?.remove();
+    userMarkerRef.current = null;
+
+    if (!userLocation) return;
+
+    userMarkerRef.current = leaflet.marker([userLocation.latitude, userLocation.longitude], {
+      icon: createUserLocationIcon(leaflet),
+      keyboard: false,
+      zIndexOffset: 2000,
+    }).addTo(map);
+  }, [mapReady, userLocation]);
 
   const focusFacility =
     mappedFacilities.find((facility) => facility.id === highlightedFacilityId) ??
@@ -140,39 +213,41 @@ export default function FacilityMap({
       <div className="flex items-center justify-between border-b border-slate-800 p-3">
         <div>
           <span className="block text-[10px] font-bold uppercase tracking-widest text-slate-500">Map</span>
-          <span className="text-base text-slate-400">Showing all visible results</span>
+          <span className="text-base text-slate-400">{initialMode ? "Centered on your location" : "Showing all visible results"}</span>
         </div>
         <a href={deepLink} target="_blank" rel="noopener noreferrer" className="text-base font-semibold text-blue-400 underline hover:text-blue-300">Open in Maps</a>
       </div>
 
       <div className="relative min-h-72 flex-1">
-        {mappedFacilities.length === 0 ? (
-          <div className="flex h-full min-h-72 items-center justify-center bg-slate-950 p-6 text-center text-base text-slate-400">
+        {mappedFacilities.length === 0 && !initialMode && !centerLocation ? (
+          <div className="absolute inset-0 z-10 flex items-center justify-center bg-slate-950 p-6 text-center text-base text-slate-400">
             No mappable facilities found for this result set.
           </div>
         ) : null}
         <div ref={mapElementRef} className="h-full min-h-72 w-full" />
       </div>
 
-      <div className="flex flex-wrap gap-2 border-t border-slate-800 p-3">
-        {mappedFacilities.map((facility, index) => {
-          const number = facility.resultNumber ?? index + 1;
-          return (
-            <button
-              key={facility.id}
-              type="button"
-              onClick={() => onPinClick(facility.id)}
-              className={`rounded-full px-2.5 py-1.5 text-base ${
-                facility.id === highlightedFacilityId
-                  ? "bg-blue-600 text-white"
-                  : "bg-slate-800 text-slate-300 hover:bg-slate-700"
-              }`}
-            >
-              {number}. {facility.name}
-            </button>
-          );
-        })}
-      </div>
+      {mappedFacilities.length > 0 ? (
+        <div className="flex flex-wrap gap-2 border-t border-slate-800 p-3">
+          {mappedFacilities.map((facility, index) => {
+            const number = facility.resultNumber ?? index + 1;
+            return (
+              <button
+                key={facility.id}
+                type="button"
+                onClick={() => onPinClick(facility.id)}
+                className={`rounded-full px-2.5 py-1.5 text-base ${
+                  facility.id === highlightedFacilityId
+                    ? "bg-blue-600 text-white"
+                    : "bg-slate-800 text-slate-300 hover:bg-slate-700"
+                }`}
+              >
+                {number}. {facility.name}
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
     </div>
   );
 }

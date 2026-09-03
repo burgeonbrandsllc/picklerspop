@@ -22,6 +22,12 @@ type Facility = {
 
 type ResultMode = "text" | "radius" | "no-location";
 
+type SearchCoordinates = {
+  latitude: number;
+  longitude: number;
+  label: string;
+};
+
 const RADIUS_STEPS = [10, 25, 50, 100];
 const METERS_PER_MILE = 1609.344;
 const MIN_DESIRED_RESULTS = 50;
@@ -50,7 +56,7 @@ function buildTextFilter(value: string) {
   ].join(",");
 }
 
-async function lookupZip(zip: string) {
+async function lookupZip(zip: string): Promise<SearchCoordinates> {
   const response = await fetch(`/api/geocode-zip?zip=${encodeURIComponent(zip)}`);
   const body: { latitude?: number; longitude?: number; error?: string } =
     await response.json();
@@ -61,7 +67,32 @@ async function lookupZip(zip: string) {
   ) {
     throw new Error(body.error || "Unable to locate that ZIP code.");
   }
-  return { latitude: body.latitude, longitude: body.longitude };
+  return { latitude: body.latitude, longitude: body.longitude, label: `ZIP ${zip}` };
+}
+
+async function lookupCity(cityQuery: string): Promise<SearchCoordinates | null> {
+  const city = safeFilterValue(cityQuery);
+  if (!city || isStateCode(city) || /\d/.test(city)) return null;
+
+  const response = await fetch(`/api/geocode-location?q=${encodeURIComponent(city)}`);
+  const body: { latitude?: number; longitude?: number; label?: string; error?: string } =
+    await response.json();
+
+  if (response.status === 404) return null;
+
+  if (
+    !response.ok ||
+    typeof body.latitude !== "number" ||
+    typeof body.longitude !== "number"
+  ) {
+    throw new Error(body.error || "Unable to locate that city.");
+  }
+
+  return {
+    latitude: body.latitude,
+    longitude: body.longitude,
+    label: body.label || city,
+  };
 }
 
 async function fetchWithinRadius(
@@ -90,10 +121,7 @@ export default function SearchableFacilityList() {
   const [errorMessage, setErrorMessage] = useState("");
   const [resultMode, setResultMode] = useState<ResultMode>("text");
   const [radiusMiles, setRadiusMiles] = useState(RADIUS_STEPS[0]);
-  const [searchCoords, setSearchCoords] = useState<{
-    latitude: number;
-    longitude: number;
-  } | null>(null);
+  const [searchCoords, setSearchCoords] = useState<SearchCoordinates | null>(null);
   const [highlightedFacilityId, setHighlightedFacilityId] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -130,25 +158,22 @@ export default function SearchableFacilityList() {
     setLoading(false);
   }
 
-  async function startRadiusSearch(zip: string) {
-    setLoading(true);
+  async function startRadiusSearch(coords: SearchCoordinates, radius: number = RADIUS_STEPS[0]) {
+    setLoading(radius === RADIUS_STEPS[0]);
     setErrorMessage("");
     setResultMode("radius");
-    setRadiusMiles(RADIUS_STEPS[0]);
+    setRadiusMiles(radius);
 
     try {
-      const coords = await lookupZip(zip);
-      const results = await fetchWithinRadius(
-        coords.latitude,
-        coords.longitude,
-        RADIUS_STEPS[0]
-      );
+      const results = await fetchWithinRadius(coords.latitude, coords.longitude, radius);
       setSearchCoords(coords);
       setFacilities(results);
       setTotalCount(results.length);
+      setPage(0);
+      setHighlightedFacilityId(null);
     } catch (error) {
       const message =
-        error instanceof Error ? error.message : "Unable to search by ZIP code.";
+        error instanceof Error ? error.message : "Unable to search that location.";
       console.error("Error loading nearby facilities:", error);
       setResultMode("no-location");
       setErrorMessage(message);
@@ -173,8 +198,20 @@ export default function SearchableFacilityList() {
     setHighlightedFacilityId(null);
 
     if (isFullZipCode(search)) {
-      await startRadiusSearch(search);
-    } else {
+      await startRadiusSearch(await lookupZip(search));
+      return;
+    }
+
+    try {
+      const cityCoords = await lookupCity(search);
+      if (cityCoords) {
+        await startRadiusSearch(cityCoords);
+      } else {
+        setSearchCoords(null);
+        await fetchTextPage(search, 0);
+      }
+    } catch (error) {
+      console.error("Error locating city search:", error);
       setSearchCoords(null);
       await fetchTextPage(search, 0);
     }
@@ -257,22 +294,61 @@ export default function SearchableFacilityList() {
           )}
         </form>
         <p className="mt-2 text-base text-slate-500">
-          Enter a full five-digit ZIP for nearby facilities, or search by facility name, city, or state.
+          Enter a city or five-digit ZIP for nearby facilities, or search by facility name or state.
         </p>
       </div>
 
       {!searched ? (
-        <div className="p-8 text-center text-slate-500">Search to find pickleball facilities.</div>
+        <div className="grid min-h-[36rem] lg:grid-cols-2">
+          <div className="h-72 border-b border-slate-300 bg-slate-950 lg:h-auto lg:border-b-0 lg:border-r">
+            <FacilityMap
+              facilities={[]}
+              highlightedFacilityId={null}
+              initialMode
+              onPinClick={() => undefined}
+            />
+          </div>
+          <div id="facility-results" className="flex min-h-72 items-center justify-center p-8 text-center lg:min-h-[36rem]">
+            <div className="max-w-md">
+              <h2 className="text-xl font-semibold text-slate-800">Results will appear here</h2>
+              <p className="mt-2 text-base text-slate-500">
+                Search by city, ZIP code, state, or facility name to find nearby pickleball courts.
+              </p>
+            </div>
+          </div>
+        </div>
       ) : loading && facilities.length === 0 ? (
         <div className="p-8 text-center text-slate-500">Loading facilities...</div>
       ) : errorMessage && facilities.length === 0 ? (
         <div className="p-8 text-center text-red-600">{errorMessage}</div>
       ) : facilities.length === 0 ? (
-        <div className="p-8 text-center text-slate-500">
-          {resultMode === "radius"
-            ? `No facilities found within ${radiusMiles} miles of ${submittedQuery}.`
-            : `No facilities found for “${submittedQuery}”.`}
-        </div>
+        resultMode === "radius" && searchCoords ? (
+          <div className="grid min-h-[36rem] lg:grid-cols-2">
+            <div className="h-72 border-b border-slate-300 bg-slate-950 lg:h-auto lg:border-b-0 lg:border-r">
+              <FacilityMap
+                facilities={[]}
+                highlightedFacilityId={null}
+                centerLocation={searchCoords}
+                onPinClick={() => undefined}
+              />
+            </div>
+            <div id="facility-results" className="flex min-h-72 items-center justify-center p-8 text-center lg:min-h-[36rem]">
+              <div className="max-w-md">
+                <h2 className="text-xl font-semibold text-slate-800">No facilities found within {radiusMiles} miles</h2>
+                <p className="mt-2 text-base text-slate-500">
+                  The map is centered on {searchCoords.label}. You can expand the search radius to look farther out.
+                </p>
+                {nextRadius && (
+                  <button type="button" onClick={expandRadius} disabled={expanding} className="mt-4 rounded-md bg-emerald-600 px-4 py-2 font-medium text-white hover:bg-emerald-700 disabled:opacity-50">
+                    {expanding ? "Searching..." : `Expand search to ${nextRadius} miles`}
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="p-8 text-center text-slate-500">No facilities found for &quot;{submittedQuery}&quot;.</div>
+        )
       ) : (
         <div className="grid min-h-[36rem] lg:grid-cols-2">
           <div className="h-72 border-b border-slate-300 bg-slate-950 lg:h-auto lg:border-b-0 lg:border-r">
@@ -289,9 +365,9 @@ export default function SearchableFacilityList() {
           <div id="facility-results" className="max-h-[46rem] overflow-y-auto p-4">
             <div className="mb-3 text-base text-slate-600">
               {resultMode === "radius" ? (
-                <span>Showing {totalCount} facilities within <strong>{radiusMiles} miles</strong> of ZIP {submittedQuery}.</span>
+                <span>Showing {totalCount} facilities within <strong>{radiusMiles} miles</strong> of {searchCoords?.label ?? submittedQuery}.</span>
               ) : (
-                <span>Showing {startResult}–{endResult} of <strong>{totalCount}</strong> matches.</span>
+                <span>Showing {startResult}-{endResult} of <strong>{totalCount}</strong> matches.</span>
               )}
             </div>
 
