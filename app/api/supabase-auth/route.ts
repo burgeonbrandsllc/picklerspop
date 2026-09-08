@@ -93,7 +93,7 @@ async function upsertShopifyCustomer(
 
   const { data: existing, error: lookupError } = await adminClient
     .from("shopify_customers")
-    .select("id")
+    .select("player_id")
     .eq("shopify_customer_id", customer.id)
     .maybeSingle();
 
@@ -105,28 +105,28 @@ async function upsertShopifyCustomer(
     const { data, error } = await adminClient
       .from("shopify_customers")
       .update(values)
-      .eq("id", existing.id)
-      .select("id")
+      .eq("player_id", existing.player_id)
+      .select("player_id")
       .single();
 
     if (error) {
       throw error;
     }
 
-    return data.id;
+    return data.player_id;
   }
 
   const { data, error } = await adminClient
     .from("shopify_customers")
     .insert(values)
-    .select("id")
+    .select("player_id")
     .single();
 
   if (error) {
     throw error;
   }
 
-  return data.id;
+  return data.player_id;
 }
 
 async function findUserByEmail(

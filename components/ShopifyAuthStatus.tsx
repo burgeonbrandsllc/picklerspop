@@ -2,6 +2,14 @@
 
 import { useEffect, useState } from "react";
 
+function navigateTopLevel(url: string) {
+  try {
+    window.top?.location.assign(url);
+  } catch {
+    window.location.assign(url);
+  }
+}
+
 export default function ShopifyAuthStatus() {
   const [status, setStatus] = useState("Checking Shopify authentication...");
 
@@ -45,7 +53,7 @@ export default function ShopifyAuthStatus() {
         if (res.status === 401 || !data.authenticated) {
           if (!cancelled) {
             setStatus("Requesting Shopify session...");
-            window.location.href = "/api/login";
+            navigateTopLevel(`/api/login?return_to=${encodeURIComponent(window.location.pathname + window.location.search)}`);
           }
           return;
         }

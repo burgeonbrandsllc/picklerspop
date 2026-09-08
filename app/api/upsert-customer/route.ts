@@ -36,7 +36,7 @@ export async function POST(request: Request) {
 
     const { data: existing, error: lookupError } = await supabase
       .from("shopify_customers")
-      .select("id")
+      .select("player_id")
       .eq("shopify_customer_id", payload.shopify_customer_id)
       .maybeSingle();
 
@@ -51,7 +51,7 @@ export async function POST(request: Request) {
       ? supabase
           .from("shopify_customers")
           .update(payload)
-          .eq("id", existing.id)
+          .eq("player_id", existing.player_id)
       : supabase.from("shopify_customers").insert(payload);
 
     const { data, error } = await query.select().single();

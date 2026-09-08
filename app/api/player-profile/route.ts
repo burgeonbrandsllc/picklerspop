@@ -14,7 +14,7 @@ type PlayerProfilePayload = {
 };
 
 const PROFILE_COLUMNS = [
-  "id",
+  "player_id",
   "username",
   "email",
   "first_name",
@@ -51,12 +51,12 @@ async function findPlayerId(
 ) {
   const { data, error } = await adminClient
     .from("shopify_customers")
-    .select("id")
+    .select("player_id")
     .eq("shopify_customer_id", shopifyCustomerId)
     .maybeSingle();
 
   if (error) throw error;
-  return data?.id ?? null;
+  return data?.player_id ?? null;
 }
 
 async function getRequestContext(request: NextRequest) {
@@ -116,7 +116,7 @@ export async function GET(request: NextRequest) {
     const { data, error } = await context.adminClient
       .from("player_attributes")
       .select(PROFILE_COLUMNS)
-      .eq("id", context.playerId)
+      .eq("player_id", context.playerId)
       .maybeSingle();
 
     if (error) throw error;
@@ -137,7 +137,7 @@ export async function PUT(request: NextRequest) {
 
     const body = (await request.json().catch(() => ({}))) as PlayerProfilePayload;
     const profile = {
-      id: context.playerId,
+      player_id: context.playerId,
       username: cleanText(body.username),
       email: cleanText(body.email) || context.user.email,
       first_name: cleanText(body.first_name),
@@ -152,7 +152,7 @@ export async function PUT(request: NextRequest) {
 
     const { data, error } = await context.adminClient
       .from("player_attributes")
-      .upsert(profile, { onConflict: "id" })
+      .upsert(profile, { onConflict: "player_id" })
       .select(PROFILE_COLUMNS)
       .single();
 

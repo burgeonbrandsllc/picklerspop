@@ -10,6 +10,15 @@ export async function GET(request: Request) {
     const code = url.searchParams.get("code");
     const state = url.searchParams.get("state");
     const error = url.searchParams.get("error");
+    const cookieStore = await cookies();
+    const backCookie = cookieStore.get("oauth_back")?.value;
+    const backPath = backCookie && backCookie.startsWith("/") ? backCookie : "/";
+
+    if (error === "login_required") {
+      const loginUrl = new URL("/api/login", url.origin);
+      loginUrl.searchParams.set("return_to", backPath);
+      return NextResponse.redirect(loginUrl);
+    }
 
     if (error) {
       return new NextResponse(`<pre>Shopify returned error: ${error}</pre>`, {
@@ -25,10 +34,8 @@ export async function GET(request: Request) {
       });
     }
 
-    const cookieStore = await cookies();
     const verifier = cookieStore.get("pkce_verifier")?.value;
     const storedState = cookieStore.get("oauth_state")?.value;
-    const backCookie = cookieStore.get("oauth_back")?.value;
 
     if (!verifier || state !== storedState) {
       return new NextResponse(`<pre>State or verifier mismatch</pre>`, {
@@ -37,13 +44,20 @@ export async function GET(request: Request) {
       });
     }
 
-    const shopDomain = process.env.SHOPIFY_SHOP_DOMAIN!;
-    const clientId = process.env.SHOPIFY_CLIENT_ID!;
-    const redirectUri = process.env.SHOPIFY_REDIRECT_URI!;
+    const shopDomain = process.env.SHOPIFY_SHOP_DOMAIN;
+    const clientId = process.env.SHOPIFY_CLIENT_ID;
+    const redirectUri = process.env.SHOPIFY_REDIRECT_URI;
 
-    // Discover token endpoint dynamically
+    if (!shopDomain || !clientId || !redirectUri) {
+      return new NextResponse(`<pre>Missing Shopify environment variables</pre>`, {
+        headers: { "Content-Type": "text/html; charset=utf-8" },
+        status: 500,
+      });
+    }
+
     const discoveryRes = await fetch(
-      `https://${shopDomain}/.well-known/openid-configuration`
+      `https://${shopDomain}/.well-known/openid-configuration`,
+      { headers: { Accept: "application/json" } }
     );
     if (!discoveryRes.ok) {
       return new NextResponse(`<pre>Discovery failed</pre>`, {
@@ -55,7 +69,6 @@ export async function GET(request: Request) {
     const config = await discoveryRes.json();
     const tokenEndpoint = config.token_endpoint as string;
 
-    // Exchange code for token
     const body = new URLSearchParams();
     body.append("grant_type", "authorization_code");
     body.append("client_id", clientId);
@@ -77,13 +90,8 @@ export async function GET(request: Request) {
       });
     }
 
-    // 👇 This is the single definition now
     const tokenData = await tokenRes.json();
-    console.log("🔐 Shopify tokenData:", JSON.stringify(tokenData, null, 2));
-
-    // --- Ensure proper token key + prefix ---
-    let accessToken: string | undefined =
-      tokenData.customer_access_token || tokenData.access_token;
+    const accessToken = tokenData.customer_access_token || tokenData.access_token;
     const idToken = tokenData.id_token as string | undefined;
 
     if (!accessToken) {
@@ -93,18 +101,10 @@ export async function GET(request: Request) {
       });
     }
 
-    // Shopify expects Bearer tokens prefixed with shcat_
-    if (!accessToken.startsWith("shcat_")) {
-      accessToken = `shcat_${accessToken}`;
-    }
-
-    const backPath = backCookie && backCookie.startsWith("/") ? backCookie : "/";
-
-    // --- Inline HTML for setting cookies + promoting HttpOnly ---
     const html = `
 <!doctype html>
 <meta charset="utf-8" />
-<title>Signing you in…</title>
+<title>Signing you in...</title>
 <script>
 (function(){
   var accessToken = ${JSON.stringify(accessToken)};
@@ -114,22 +114,16 @@ export async function GET(request: Request) {
   try {
     localStorage.setItem("shopify_customer_access_token", accessToken);
     if (idToken) localStorage.setItem("shopify_id_token", idToken);
-
-    document.cookie = "customer_access_token=" + encodeURIComponent(accessToken) + "; Path=/; Secure; SameSite=Lax; Max-Age=604800";
-    if (idToken) {
-      document.cookie = "id_token=" + encodeURIComponent(idToken) + "; Path=/; Secure; SameSite=Lax; Max-Age=604800";
-    }
   } catch (e) {}
 
-  // Promote to HttpOnly server cookie for SSR/APIs
-fetch("/api/set-session", {
-  method: "POST",
-  headers: { "Content-Type":"application/json" },
-  body: JSON.stringify({ access_token: accessToken, id_token: idToken })
-}).finally(function(){
-  window.location.replace(back);
-});
-
+  fetch("/api/set-session", {
+    method: "POST",
+    headers: { "Content-Type":"application/json" },
+    credentials: "include",
+    body: JSON.stringify({ access_token: accessToken, id_token: idToken })
+  }).finally(function(){
+    window.location.replace(back);
+  });
 })();
 </script>`;
 
